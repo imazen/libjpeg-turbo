@@ -45,7 +45,8 @@ typedef signed int INT32;
 /* Define envionment variables of OpenCL decoding. */
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
 #define OPENCL_PIPELINE           /* Pipeline or no pipeline */
-#define MAX_IMAGE_WIDTH   4096    /* Using to set the buffer size */
-#define MAX_IMAGE_HEIGHT  4096    /* Using to set the buffer size */
+#define MAX_BUFFER_SIZE   (9000 * 6000 * 4)  /* Using to set the buffer size */
 #define NUM_COMPONENT     3       /* The number of component */
+#define MCUNUMS           800
+#define BUFFERNUMS        10
 #endif

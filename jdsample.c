@@ -145,9 +145,16 @@ sep_upsample (j_decompress_ptr cinfo,
     num_rows = out_rows_avail;
 
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-  if (CL_TRUE== jocl_cl_is_available()) {
-    *output_buf = &jocl_global_data_ptr_output[cinfo->output_scanline * 
-      cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+  if (CL_TRUE == jocl_cl_is_available()) {
+    memcpy(*output_buf, jocl_global_data_ptr_output + cinfo->output_scanline * 
+      cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT, 
+      cinfo->image_width * NUM_COMPONENT);
+    //*output_buf = &jocl_global_data_ptr_output[cinfo->output_scanline * 
+    //  cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+    if(num_rows == 2) {
+      *(output_buf + 1) =  &jocl_global_data_ptr_output[(cinfo->output_scanline + 1) * 
+        cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+    }
   }
   else
 #endif

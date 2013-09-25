@@ -172,20 +172,23 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
   int mcuy  = 0, index = 0;
   int block = cinfo->MCUs_per_row;
-  int i, j, upfactor;
+  int i, j, upfactor,buffer_index;
   int qutable[128];
-  float qutable_float[128];
+  float  qutable_float[128];
   short* qutable_short_inter = (short *)jocl_global_data_ptr_qutable;
-  int* qutable_int_inter = (int *)jocl_global_data_ptr_qutable;
+  int*   qutable_int_inter = (int *)jocl_global_data_ptr_qutable;
+  cl_event buffer_event[BUFFERNUMS];
+
+  unsigned long buffer_output_size = jocl_cl_get_buffer_unit_size();
 
   /*offset_input is used to compute the offset of input and output for Kernel*/
   unsigned int offset_input = 0;
-  /*kernel execution times  = cinfo->total_iMCU_rows/mcuNums*/
-  unsigned int mcuNums      = 800;
   unsigned int mcudecoder   = 0;
   int rows_per_iMCU_row     = coef->MCU_rows_per_iMCU_row;
   int decodeMCU = 0;
   int total_mcu_num = cinfo->total_iMCU_rows * rows_per_iMCU_row * cinfo->MCUs_per_row;
+  int buffer_flag = 0;
+  /* int info;*/
   /*IDCT FAST SHORT*/
   static const int aanscales[DCTSIZE2] = {
 	  /* precomputed values scaled up by 14 bits */
@@ -201,7 +204,6 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
   /*IDCT FAST FLOAT */
   static const double aanscalefactor[8] = {1.0, 1.387039845, 1.306562965, 1.175875602,
                                            1.0, 0.785694958, 0.541196100, 0.275899379};
-
 
   if (CL_TRUE == jocl_cl_is_available()) { 
     switch (cinfo->dct_method){
@@ -295,17 +297,28 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
         yoffset++) {
         for (MCU_col_num = coef->MCU_ctr; MCU_col_num <= last_MCU_col;
           MCU_col_num++) {
+#ifdef PERFORMANCE_PPA
+  PPAStartCpuEventFunc(huffman);
+#endif
+            buffer_index = buffer_flag % BUFFERNUMS;
+
+            if(buffer_flag > (BUFFERNUMS - 1) && mcuy == 0) {
+             /*jocl_clGetEventInfo(buffer_event[buffer_index], CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(info),&info,NULL);*/
+             jocl_clWaitForEvents(1, &buffer_event[buffer_index]);
+            }
+
           if (CL_TRUE== jocl_cl_is_available()) {
 #ifndef JOCL_CL_OS_WIN32
             if(CL_FALSE == jocl_cl_is_nvidia_opencl()) {
-              jocl_global_data_ptr_input = (JCOEFPTR)jocl_clEnqueueMapBuffer(
-                jocl_cl_get_command_queue(), jocl_global_data_mem_input, CL_TRUE,
-                CL_MAP_WRITE_INVALIDATE_REGION, 0, MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4,
+              jocl_global_data_ptr_input[buffer_index] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
+                jocl_cl_get_command_queue(), jocl_global_data_mem_input[buffer_index], CL_TRUE,
+                CL_MAP_WRITE_INVALIDATE_REGION, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
                 0, NULL, NULL, NULL);
             }
 #endif
-            for (index = 0; index<cinfo->blocks_in_MCU; ++index)
-              coef->MCU_buffer[index] = (JBLOCKROW)(jocl_global_data_ptr_input +
+
+            for (index = 0; index < cinfo->blocks_in_MCU; ++index)
+              coef->MCU_buffer[index] = (JBLOCKROW)(jocl_global_data_ptr_input[buffer_index] +
                 mcuy++ * DCTSIZE2);
           }
           if (! (*cinfo->entropy->decode_mcu) (cinfo, coef->MCU_buffer)) {
@@ -316,39 +329,28 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
           }
           decodeMCU++;
           mcudecoder++;
-
-          if(CL_TRUE == jocl_cl_is_nvidia_opencl()) {
-            if (     
-              (decodeMCU == cinfo->total_iMCU_rows *
-              coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
-              jocldec_run_kernels_full_image(cinfo,
-                                             upfactor,
-                                             mcudecoder,
-                                             block,
-                                             offset_input,
-                                             total_mcu_num,
-                                             decodeMCU);
-              offset_input += mcudecoder;
-              mcudecoder = 0;
-            }
-          }
-          else {
-            if (
+#ifdef PERFORMANCE_PPA
+   PPAStopCpuEventFunc(huffman);
+#endif
+          if (
 #ifdef OPENCL_PIPELINE
-              decodeMCU % mcuNums==0 ||
-#endif        
-              (decodeMCU == cinfo->total_iMCU_rows *
-              coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
-              jocldec_run_kernels_full_image(cinfo,
-                                             upfactor,
-                                             mcudecoder,
-                                             block,
-                                             offset_input,
-                                             total_mcu_num,
-                                             decodeMCU);
-              offset_input += mcudecoder;
-              mcudecoder = 0;
-            }
+            decodeMCU % MCUNUMS==0 ||
+#endif
+            (decodeMCU == cinfo->total_iMCU_rows *
+            coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
+            jocldec_run_kernels_full_image(cinfo,
+                                           upfactor,
+                                           mcudecoder,
+                                           block,
+                                           offset_input,
+                                           total_mcu_num,
+                                           decodeMCU,
+                                           buffer_index,
+                                           buffer_event);
+            offset_input += mcudecoder;
+            mcudecoder = 0;
+            mcuy = 0;
+            buffer_flag ++;
           }
         }
         /* Completed an MCU row, but perhaps not an iMCU row */
@@ -359,7 +361,7 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
 	  }
     }
 	/* Completed the iMCU row, advance counters for next one */
-	if ( ++(cinfo->output_iMCU_row) < cinfo->total_iMCU_rows) {
+	if (++(cinfo->output_iMCU_row) < cinfo->total_iMCU_rows) {
       (*cinfo->inputctl->finish_input_pass) (cinfo);
       return JPEG_ROW_COMPLETED;
     }

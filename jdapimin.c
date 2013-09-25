@@ -38,7 +38,9 @@ jpeg_CreateDecompress (j_decompress_ptr cinfo, int version, size_t structsize)
 {
   int i;
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
+  unsigned long    buffer_output_size = 0;
   cl_int err_code;
+  int j;
 #endif
 
   /* Guard against version mismatches between library and caller. */
@@ -92,65 +94,70 @@ jpeg_CreateDecompress (j_decompress_ptr cinfo, int version, size_t structsize)
   cinfo->global_state = DSTATE_START;
 
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-  if (CL_FALSE == jocl_cl_is_available() && CL_TRUE == jocl_cl_init()) {
-    if(CL_TRUE == jocl_cl_is_nvidia_opencl()) {
-      jocl_global_data_ptr_input  = (JCOEFPTR)malloc(MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4);
-      memset(jocl_global_data_ptr_input, 0, MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4);
-      jocl_global_data_ptr_output = (JSAMPROW)malloc(MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 6);
-      memset(jocl_global_data_ptr_output, 0, MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 6);
-      jocl_global_data_ptr_qutable = (float *)malloc(4096);
-      memset(jocl_global_data_ptr_qutable, 0, 4096);
-
-      CL_SAFE_CALL0(jocl_global_data_mem_input = jocl_clCreateBuffer(jocl_cl_get_context(),
-        CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
-        MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4, jocl_global_data_ptr_input, &err_code),return);
+  if (CL_FALSE == jocl_cl_is_support_opencl() && CL_TRUE == jocl_cl_init()) {
+    buffer_output_size = jocl_cl_get_buffer_unit_size();
+    if (CL_TRUE == jocl_cl_is_nvidia_opencl()) {
+      jocl_global_data_ptr_output = (JSAMPROW)malloc(buffer_output_size);
+      memset(jocl_global_data_ptr_output, 0, buffer_output_size);
       CL_SAFE_CALL0(jocl_global_data_mem_output = jocl_clCreateBuffer(jocl_cl_get_context(),
         CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR,
-        MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 6, jocl_global_data_ptr_output, &err_code),return);
+        buffer_output_size, jocl_global_data_ptr_output, &err_code),return);
+      jocl_global_data_ptr_qutable = (float *)malloc(128 * sizeof(float));
+      memset(jocl_global_data_ptr_qutable, 0, 128 * sizeof(float));
       CL_SAFE_CALL0(jocl_global_data_mem_qutable = jocl_clCreateBuffer(jocl_cl_get_context(),
         CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-        4096, jocl_global_data_ptr_qutable, &err_code),return);
-	  }
-	  else {
-      CL_SAFE_CALL0(jocl_global_data_mem_input = jocl_clCreateBuffer(jocl_cl_get_context(),
-        CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
-        MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4, NULL, &err_code),return);
-      CL_SAFE_CALL0(jocl_global_data_ptr_input = (JCOEFPTR)jocl_clEnqueueMapBuffer(
-        jocl_cl_get_command_queue(), jocl_global_data_mem_input, CL_TRUE,
-        CL_MAP_WRITE_INVALIDATE_REGION, 0, MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4,
-        0, NULL, NULL, &err_code),return);
-      memset(jocl_global_data_ptr_input,0,MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4);
-      CL_SAFE_CALL0(err_code = jocl_clEnqueueUnmapMemObject(
-        jocl_cl_get_command_queue(), jocl_global_data_mem_input,
-        jocl_global_data_ptr_input, 0, NULL, NULL),);
+        128 * sizeof(float), jocl_global_data_ptr_qutable, &err_code),return);
+
+      for(j = 0; j < BUFFERNUMS; ++j) {
+        jocl_global_data_ptr_input[j]  = (JCOEFPTR)malloc(MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF));
+        memset(jocl_global_data_ptr_input[j], 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF));
+
+        CL_SAFE_CALL0(jocl_global_data_mem_input[j] = jocl_clCreateBuffer(jocl_cl_get_context(),
+          CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
+          MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF), jocl_global_data_ptr_input[j], &err_code),return);
+      }
+    }
+    else {
       CL_SAFE_CALL0(jocl_global_data_mem_output = jocl_clCreateBuffer(jocl_cl_get_context(),
         CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR,
-        MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 6, NULL, &err_code),return);
+        buffer_output_size, NULL, &err_code),return);
       CL_SAFE_CALL0(jocl_global_data_ptr_output = (JSAMPROW)jocl_clEnqueueMapBuffer(
         jocl_cl_get_command_queue(), jocl_global_data_mem_output, CL_TRUE,
-        CL_MAP_READ, 0, MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 6, 
+        CL_MAP_READ, 0, buffer_output_size, 
         0, NULL, NULL, &err_code),return);
       CL_SAFE_CALL0(err_code = jocl_clEnqueueUnmapMemObject(
         jocl_cl_get_command_queue(), jocl_global_data_mem_output,
-        jocl_global_data_ptr_output, 0, NULL, NULL),);
+        jocl_global_data_ptr_output, 0, NULL, NULL),return);
       CL_SAFE_CALL0(jocl_global_data_mem_qutable = jocl_clCreateBuffer(jocl_cl_get_context(),
         CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR,
-        4096, NULL, &err_code),return);
+        128 * sizeof(float), NULL, &err_code),return);
       CL_SAFE_CALL0(jocl_global_data_ptr_qutable = (float *)jocl_clEnqueueMapBuffer(
         jocl_cl_get_command_queue(), jocl_global_data_mem_qutable, CL_TRUE,
-        CL_MAP_WRITE_INVALIDATE_REGION, 0, 4096, 0, NULL, NULL, &err_code),return);
-      memset(jocl_global_data_ptr_qutable, 0, 4096);
+        CL_MAP_WRITE_INVALIDATE_REGION, 0, 128 * sizeof(float), 0, NULL, NULL, &err_code),return);
+      memset(jocl_global_data_ptr_qutable, 0, 128 * sizeof(float));
       CL_SAFE_CALL0(err_code = jocl_clEnqueueUnmapMemObject(
-        jocl_cl_get_command_queue(), jocl_global_data_mem_qutable ,
-        jocl_global_data_ptr_qutable, 0, NULL, NULL),);
+        jocl_cl_get_command_queue(), jocl_global_data_mem_qutable,
+        jocl_global_data_ptr_qutable, 0, NULL, NULL),return);
+
+      for(j = 0; j < BUFFERNUMS; ++j) {
+        CL_SAFE_CALL0(jocl_global_data_mem_input[j] = jocl_clCreateBuffer(jocl_cl_get_context(),
+          CL_MEM_READ_WRITE | CL_MEM_ALLOC_HOST_PTR,
+          MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF), NULL, &err_code),return);
+        CL_SAFE_CALL0(jocl_global_data_ptr_input[j] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
+          jocl_cl_get_command_queue(), jocl_global_data_mem_input[j], CL_TRUE,
+          CL_MAP_WRITE_INVALIDATE_REGION, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
+          0, NULL, NULL, &err_code),return);
+        memset(jocl_global_data_ptr_input[j],0,MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF));
+        CL_SAFE_CALL0(err_code = jocl_clEnqueueUnmapMemObject(
+          jocl_cl_get_command_queue(), jocl_global_data_mem_input[j],
+          jocl_global_data_ptr_input[j], 0, NULL, NULL),return);
+      }
     }
     CL_SAFE_CALL0(jocl_global_data_mem_inter = jocl_clCreateBuffer(jocl_cl_get_context(), 
-      CL_MEM_READ_WRITE,MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 8 ,
-      NULL, &err_code),return);
+	  CL_MEM_READ_WRITE, MCUNUMS * DCTSIZE2 * 6, NULL, &err_code),return);
     if (CL_FALSE == jocldec_build_kernels(cinfo)) {
       jocl_cl_set_opencl_failure();
       jocl_cl_set_opencl_support_failure();
-      return;
     }
   }
 #endif

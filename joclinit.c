@@ -16,6 +16,10 @@
 #include "joclinit.h"
 #undef  __JOCL_CL_INIT_MAIN__
 
+#ifdef JOCL_CL_OS_WIN32
+#define CL_QUEUE_THREAD_HANDLE_AMD 0x403E
+#define CL_PARAM_NUM 20
+#endif
 /*
  * OCL_STATIS ocl_status
  * Store all the informations of OpenCL platform.
@@ -30,6 +34,7 @@ typedef struct
   cl_bool          is_opencl_available;
   cl_bool          is_opencl_support;
   cl_bool          fancy_index;
+  unsigned long    mem_size;
   char             platform_profile   [1024];
   char             platform_version   [1024];
   char             platform_name      [1024];
@@ -38,7 +43,7 @@ typedef struct
   char             device_name        [1024];
 } OCL_STATUS;
 
-static OCL_STATUS ocl_status = {NULL, NULL, NULL, NULL, CL_FALSE, CL_FALSE};
+static OCL_STATUS ocl_status = {NULL, NULL, NULL, NULL, CL_FALSE, CL_FALSE, CL_FALSE, 0};
 
 
 /*
@@ -163,14 +168,18 @@ const char* jocl_cl_errstring(cl_int err_code)
 #endif
 cl_bool jocl_cl_init()
 {
-  if (!ocl_status.is_opencl_available)
-  {
+#ifdef JOCL_CL_OS_WIN32
+  void *handle = INVALID_HANDLE_VALUE;
+  int ret;
+#endif
+  if (!ocl_status.is_opencl_available) {
     cl_int          err_code;
     cl_uint         num_platform;
     cl_uint         num_device;
     cl_platform_id* pids;
     cl_device_id*   dids;
     cl_uint         index;
+	unsigned int    num_gpu_device = 0;
 
 #ifdef JOCL_CL_OS_WIN32
     HINSTANCE       module;
@@ -180,8 +189,7 @@ cl_bool jocl_cl_init()
     module = dlopen(CL_LIBRARY_NAME, RTLD_LAZY);
 #endif
 
-    if(module == NULL)
-    {
+    if(module == NULL) {
       CL_DEBUG_NOTE ("Loading OpenCL Library fails!!\n");
       return CL_FALSE;
     }
@@ -191,100 +199,98 @@ cl_bool jocl_cl_init()
     CL_LOAD_FUNCTION(clGetPlatformInfo                );
     CL_LOAD_FUNCTION(clGetDeviceIDs                   );
     CL_LOAD_FUNCTION(clGetDeviceInfo                  );
-    /* CL_LOAD_FUNCTION(clCreateSubDevices               );
+    /* CL_LOAD_FUNCTION(clCreateSubDevices            );
     CL_LOAD_FUNCTION(clRetainDevice                   );
     CL_LOAD_FUNCTION(clReleaseDevice                  );*/
     CL_LOAD_FUNCTION(clCreateContext                  );
-    /* CL_LOAD_FUNCTION(clCreateContextFromType          );
-      CL_LOAD_FUNCTION(clRetainContext                  );
-      CL_LOAD_FUNCTION(clReleaseContext                 );
-      CL_LOAD_FUNCTION(clGetContextInfo                 );*/
+    /* CL_LOAD_FUNCTION(clCreateContextFromType       );
+    CL_LOAD_FUNCTION(clRetainContext                  );
+    CL_LOAD_FUNCTION(clReleaseContext                 );
+    CL_LOAD_FUNCTION(clGetContextInfo                 );*/
     CL_LOAD_FUNCTION(clCreateCommandQueue             );
-    /* CL_LOAD_FUNCTION(clRetainCommandQueue             );
-      CL_LOAD_FUNCTION(clReleaseCommandQueue            );
-      CL_LOAD_FUNCTION(clGetCommandQueueInfo            );*/
+    /* CL_LOAD_FUNCTION(clRetainCommandQueue          );
+    CL_LOAD_FUNCTION(clReleaseCommandQueue            );*/
+    CL_LOAD_FUNCTION(clGetCommandQueueInfo            );
     CL_LOAD_FUNCTION(clCreateBuffer                   );
-    /* CL_LOAD_FUNCTION(clCreateSubBuffer                );
-      CL_LOAD_FUNCTION(clCreateImage                    );
-      CL_LOAD_FUNCTION(clRetainMemObject                );*/
+    /* CL_LOAD_FUNCTION(clCreateSubBuffer             );
+    CL_LOAD_FUNCTION(clCreateImage                    );
+    CL_LOAD_FUNCTION(clRetainMemObject                );*/
     CL_LOAD_FUNCTION(clReleaseMemObject               );
-    /* CL_LOAD_FUNCTION(clGetSupportedImageFormats       );*/
+    /* CL_LOAD_FUNCTION(clGetSupportedImageFormats    );*/
     CL_LOAD_FUNCTION(clGetMemObjectInfo               );
-    /* CL_LOAD_FUNCTION(clGetImageInfo                   );
-      CL_LOAD_FUNCTION(clSetMemObjectDestructorCallback );
-      CL_LOAD_FUNCTION(clCreateSampler                  );
-      CL_LOAD_FUNCTION(clRetainSampler                  );
-      CL_LOAD_FUNCTION(clReleaseSampler                 );
-      CL_LOAD_FUNCTION(clGetSamplerInfo                 );*/
+    /* CL_LOAD_FUNCTION(clGetImageInfo                );
+    CL_LOAD_FUNCTION(clSetMemObjectDestructorCallback );
+    CL_LOAD_FUNCTION(clCreateSampler                  );
+    CL_LOAD_FUNCTION(clRetainSampler                  );
+    CL_LOAD_FUNCTION(clReleaseSampler                 );
+    CL_LOAD_FUNCTION(clGetSamplerInfo                 );*/
     CL_LOAD_FUNCTION(clCreateProgramWithSource        );
     CL_LOAD_FUNCTION(clCreateProgramWithBinary        );
     /* CL_LOAD_FUNCTION(clCreateProgramWithBuiltInKernels);
-      CL_LOAD_FUNCTION(clRetainProgram                  );
-      CL_LOAD_FUNCTION(clReleaseProgram                 );*/
+    CL_LOAD_FUNCTION(clRetainProgram                  );
+    CL_LOAD_FUNCTION(clReleaseProgram                 );*/
     CL_LOAD_FUNCTION(clBuildProgram                   );
-    /* CL_LOAD_FUNCTION(clCompileProgram                 );
-      CL_LOAD_FUNCTION(clLinkProgram                    );
-      CL_LOAD_FUNCTION(clUnloadPlatformCompiler         );*/
+    /* CL_LOAD_FUNCTION(clCompileProgram              );
+    CL_LOAD_FUNCTION(clLinkProgram                    );
+    CL_LOAD_FUNCTION(clUnloadPlatformCompiler         );*/
     CL_LOAD_FUNCTION(clGetProgramInfo                 );
     CL_LOAD_FUNCTION(clGetProgramBuildInfo            );
     CL_LOAD_FUNCTION(clCreateKernel                   );
-    /* CL_LOAD_FUNCTION(clCreateKernelsInProgram         );
-      CL_LOAD_FUNCTION(clRetainKernel                   );
-      CL_LOAD_FUNCTION(clReleaseKernel                  );*/
+    /* CL_LOAD_FUNCTION(clCreateKernelsInProgram      );
+    CL_LOAD_FUNCTION(clRetainKernel                   );
+    CL_LOAD_FUNCTION(clReleaseKernel                  );*/
     CL_LOAD_FUNCTION(clSetKernelArg                   );
-    /*CL_LOAD_FUNCTION(clGetKernelInfo                  );
-      CL_LOAD_FUNCTION(clGetKernelArgInfo               );*/
+    /*CL_LOAD_FUNCTION(clGetKernelInfo                );
+    CL_LOAD_FUNCTION(clGetKernelArgInfo               );*/
     CL_LOAD_FUNCTION(clGetKernelWorkGroupInfo         );
-    /* CL_LOAD_FUNCTION(clWaitForEvents                  );
-      CL_LOAD_FUNCTION(clGetEventInfo                   );
-      CL_LOAD_FUNCTION(clCreateUserEvent                );
-      CL_LOAD_FUNCTION(clRetainEvent                    );
-      CL_LOAD_FUNCTION(clReleaseEvent                   );
-      CL_LOAD_FUNCTION(clSetUserEventStatus             );
-      CL_LOAD_FUNCTION(clSetEventCallback               );
-      CL_LOAD_FUNCTION(clGetEventProfilingInfo          );*/
+    CL_LOAD_FUNCTION(clWaitForEvents                  );
+    CL_LOAD_FUNCTION(clGetEventInfo                   );
+    CL_LOAD_FUNCTION(clCreateUserEvent                );
+    /* CL_LOAD_FUNCTION(clRetainEvent                 );*/
+    CL_LOAD_FUNCTION(clReleaseEvent                   );
+    CL_LOAD_FUNCTION(clSetUserEventStatus             );
+    /*  CL_LOAD_FUNCTION(clSetEventCallback           );
+    CL_LOAD_FUNCTION(clGetEventProfilingInfo          );*/
     CL_LOAD_FUNCTION(clFlush                          );
     CL_LOAD_FUNCTION(clFinish                         );
-    /* CL_LOAD_FUNCTION(clEnqueueReadBuffer              );
-      CL_LOAD_FUNCTION(clEnqueueReadBufferRect          );
-      CL_LOAD_FUNCTION(clEnqueueWriteBuffer             );
-      CL_LOAD_FUNCTION(clEnqueueWriteBufferRect         );
-      CL_LOAD_FUNCTION(clEnqueueFillBuffer              );
-      CL_LOAD_FUNCTION(clEnqueueCopyBuffer              );
-      CL_LOAD_FUNCTION(clEnqueueCopyBufferRect          );
-      CL_LOAD_FUNCTION(clEnqueueReadImage               );
-      CL_LOAD_FUNCTION(clEnqueueWriteImage              );
-      CL_LOAD_FUNCTION(clEnqueueFillImage               );
-      CL_LOAD_FUNCTION(clEnqueueCopyImage               );
-      CL_LOAD_FUNCTION(clEnqueueCopyImageToBuffer       );
-      CL_LOAD_FUNCTION(clEnqueueCopyBufferToImage       );*/
+    /* CL_LOAD_FUNCTION(clEnqueueReadBuffer           );
+    CL_LOAD_FUNCTION(clEnqueueReadBufferRect          );*/
+    CL_LOAD_FUNCTION(clEnqueueWriteBuffer             );
+    /* CL_LOAD_FUNCTION(clEnqueueWriteBufferRect      );
+    CL_LOAD_FUNCTION(clEnqueueFillBuffer              );
+    CL_LOAD_FUNCTION(clEnqueueCopyBuffer              );
+    CL_LOAD_FUNCTION(clEnqueueCopyBufferRect          );
+    CL_LOAD_FUNCTION(clEnqueueReadImage               );
+    CL_LOAD_FUNCTION(clEnqueueWriteImage              );
+    CL_LOAD_FUNCTION(clEnqueueFillImage               );
+    CL_LOAD_FUNCTION(clEnqueueCopyImage               );
+    CL_LOAD_FUNCTION(clEnqueueCopyImageToBuffer       );
+    CL_LOAD_FUNCTION(clEnqueueCopyBufferToImage       );*/
     CL_LOAD_FUNCTION(clEnqueueMapBuffer               );
-    /* CL_LOAD_FUNCTION(clEnqueueMapImage                );*/
+    /* CL_LOAD_FUNCTION(clEnqueueMapImage             );*/
     CL_LOAD_FUNCTION(clEnqueueUnmapMemObject          );
-    /* CL_LOAD_FUNCTION(clEnqueueMigrateMemObjects       );*/
+    /* CL_LOAD_FUNCTION(clEnqueueMigrateMemObjects    );*/
     CL_LOAD_FUNCTION(clEnqueueNDRangeKernel           );
-    /* CL_LOAD_FUNCTION(clEnqueueTask                    );
-      CL_LOAD_FUNCTION(clEnqueueNativeKernel            );
-      CL_LOAD_FUNCTION(clEnqueueMarkerWithWaitList      );
-      CL_LOAD_FUNCTION(clEnqueueBarrierWithWaitList     );
-      CL_LOAD_FUNCTION(clSetPrintfCallback              );*/
+    /* CL_LOAD_FUNCTION(clEnqueueTask                 );
+    CL_LOAD_FUNCTION(clEnqueueNativeKernel            );
+    CL_LOAD_FUNCTION(clEnqueueMarkerWithWaitList      );
+    CL_LOAD_FUNCTION(clEnqueueBarrierWithWaitList     );
+    CL_LOAD_FUNCTION(clSetPrintfCallback              );*/
 
     /* ********* Get and select a platform. ********* */
     CL_SAFE_CALL0(err_code = jocl_clGetPlatformIDs(0, NULL, &num_platform)
       , return CL_FALSE);
-    if ( num_platform < 1 )
-    {
+    if ( num_platform < 1 ) {
       CL_DEBUG_NOTE("NO CL PLATFORM!\n");
       return CL_FALSE;
     }
 
     pids = (cl_platform_id*)malloc(num_platform * sizeof(cl_platform_id));
 
-    CL_SAFE_CALL1(err_code = jocl_clGetPlatformIDs(num_platform, pids, NULL)
-      , return CL_FALSE, pids);
+    CL_SAFE_CALL1(err_code = jocl_clGetPlatformIDs(num_platform, pids, NULL),
+      return CL_FALSE, pids);
 
-    for (index = 0 ; index < num_platform ; ++index )
-    {
+    for (index = 0 ; index < num_platform ; ++index ) {
       ocl_status.platform_id = pids[index];
 
       CL_SAFE_CALL1(err_code = jocl_clGetPlatformInfo(ocl_status.platform_id,
@@ -323,8 +329,7 @@ cl_bool jocl_cl_init()
     /* ********* Get and select a device. ********* */
     CL_SAFE_CALL0(err_code = jocl_clGetDeviceIDs(ocl_status.platform_id,
       CL_DEVICE_TYPE_ALL, 0, NULL, &num_device), return CL_FALSE);
-    if ( num_device < 1 )
-    {
+    if ( num_device < 1 ) {
       CL_DEBUG_NOTE("NO DEVICE FOUND!\n");
       return CL_FALSE;
     }
@@ -334,24 +339,40 @@ cl_bool jocl_cl_init()
     CL_SAFE_CALL1(err_code = jocl_clGetDeviceIDs(ocl_status.platform_id,
       CL_DEVICE_TYPE_ALL, num_device, dids, NULL), return CL_FALSE, dids);
 
-    for ( index = 0 ; index < num_device ; ++index )
-    {
-      cl_device_type d_type;
-      ocl_status.device_id = dids[index];
-
-      CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
-        CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
-        return CL_FALSE, dids);
-      if (CL_DEVICE_TYPE_GPU == d_type)
-        break;      
-    }
+	for ( index = 0 ; index < num_device ; ++index ) {
+	  cl_device_type d_type;
+	  ocl_status.device_id = dids[index];
+	  CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
+	  	CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
+	  	return CL_FALSE, dids);
+	  if(CL_DEVICE_TYPE_GPU == d_type)
+	  	num_gpu_device++;
+	}
+	for (index = 0; index < num_device; ++index) {
+	  cl_device_type d_type;
+	  ocl_status.device_id = dids[index];
+	  CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
+	    CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
+	    return CL_FALSE, dids);
+	  CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
+	    CL_DEVICE_NAME, sizeof(ocl_status.device_name), ocl_status.device_name, NULL),
+	    return CL_FALSE);
+	  if(CL_DEVICE_TYPE_GPU == d_type) {
+	    num_gpu_device--;
+	    if (0 == strcmp(ocl_status.device_name,
+	      "Devastator"))
+	      break;
+	  }
+	  if(num_gpu_device == 0)
+	    break;
+	}
+	CL_DEBUG_NOTE("Device:\nName: %s\n",ocl_status.device_name);
+	/* AMD A10-4600M APU with Radeon(tm) HD Graphics */
 
     free(dids);
-
-    CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
-      CL_DEVICE_NAME, sizeof(ocl_status.device_name),
-      ocl_status.device_name, NULL), return CL_FALSE);
-    CL_DEBUG_NOTE("Device:\nName: %s\n",ocl_status.device_name);
+	CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
+	  CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_device_type),
+	  &ocl_status.mem_size, NULL), return CL_FALSE);
 
     /* ********* Create a context. ********* */
     ocl_status.context = CL_SAFE_CALL0(jocl_clCreateContext(NULL,
@@ -361,7 +382,21 @@ cl_bool jocl_cl_init()
     ocl_status.command_queue = CL_SAFE_CALL0(jocl_clCreateCommandQueue(
       ocl_status.context, ocl_status.device_id, 0, &err_code),
       return CL_FALSE);
-
+#ifdef JOCL_CL_OS_WIN32
+    if( jocl_clGetCommandQueueInfo( ocl_status.command_queue,
+      CL_QUEUE_THREAD_HANDLE_AMD, sizeof(handle),
+      &handle, NULL ) == CL_SUCCESS && handle != INVALID_HANDLE_VALUE ) {
+      if(SetThreadPriority( handle, THREAD_PRIORITY_TIME_CRITICAL )) {
+        CL_DEBUG_NOTE ("SetThreadPriority success\n");
+        ret = GetThreadPriority(handle);
+        CL_DEBUG_NOTE ("Priority level = %d\n",ret);
+      }
+      else {
+        int ret = GetLastError();
+        CL_DEBUG_NOTE ("SetThreadPriority error,code  = %d\n",ret);
+      }
+    }  
+#endif
     /* *** OpenCL initialized successfully, modify the mark. *** */
     ocl_status.is_opencl_available = CL_TRUE;
     ocl_status.is_opencl_support = CL_TRUE;
@@ -372,8 +407,6 @@ cl_bool jocl_cl_init()
 }
 
 #undef CL_LOAD_FUNCTION
-
-
 /*
  * jocl_cl_compile_and_build
  *
@@ -386,22 +419,19 @@ cl_bool jocl_cl_init()
 JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
                                            const char*  kernel_name[])
 {
-    int i;
-    size_t binarySizes;
-    
-    int num_device;
-    char *binaries, *str = NULL;
-    char deviceName[1024];
-    char fileName[256] = { 0 },cl_name[] = "kernel";
-    FILE * fp = NULL;
-    int b_error, binary_status;
-    char *binary;
-    size_t length_binary;
-    num_device = 1;
+  int i;
+  size_t binarySizes;
+  int num_device;
+  char *binaries, *str = NULL;
+  char deviceName[1024];
+  char fileName[256] = { 0 },cl_name[] = "kernel";
+  FILE * fp = NULL;
+  int b_error, binary_status;
+  char *binary;
+  size_t length_binary;
+  num_device = 1;
   /* Perform this operation only when OpenCL is available. */
-  if (ocl_status.is_opencl_available)
-  {
-    
+  if (ocl_status.is_opencl_available) {   
     JOCL_CL_RUNDATA* cl_data = NULL;
     cl_int  err_code;
     cl_uint index;
@@ -432,7 +462,7 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
 
       /* Compile OpenCL code. If error, output the error informations. */
       CL_SAFE_CALL1(err_code = jocl_clBuildProgram(cl_data->program,
-      0, NULL, NULL, NULL, NULL), return NULL, cl_data);
+        0, NULL, NULL, NULL, NULL), return NULL, cl_data);
 
       if (CL_SUCCESS != err_code) {
         char *err_msg;
@@ -535,8 +565,7 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
     cl_data->work_group_size = (size_t*)malloc(num_kernel * sizeof(size_t));
 
     /* Create cl_kernels. */
-    for ( index = 0 ; index < num_kernel ; ++index )
-    {
+    for ( index = 0 ; index < num_kernel ; ++index ) {
       CL_SAFE_CALL3(cl_data->kernel[index] = jocl_clCreateKernel(
         cl_data->program, kernel_name[index], &err_code)
         , return NULL, cl_data->kernel, cl_data->work_group_size, cl_data);
@@ -645,8 +674,13 @@ cl_bool jocl_cl_is_nvidia_opencl(void)
   if (0 == strcmp(ocl_status.platform_vendor,
         "NVIDIA Corporation"))
     return CL_TRUE;
-  else
+  else {
+#ifdef __APPLE__
+    return CL_TRUE;
+#else
     return CL_FALSE;
+#endif
+  }
 }
       
 /*
@@ -657,27 +691,40 @@ cl_bool jocl_cl_is_nvidia_opencl(void)
 
 cl_bool jocl_cl_is_opencl_decompress(j_decompress_ptr cinfo)
 {
-  unsigned int output_buffer, input_buffer;
-  
+  unsigned int output_buffer;
+  unsigned long buffer_output_size = jocl_cl_get_buffer_unit_size();
+
   /* output_buffer: the size of actual output */
   /* input_buffer : the size of actual input  */
   output_buffer = cinfo->MCUs_per_row * cinfo->total_iMCU_rows * cinfo->max_h_samp_factor * 
-               cinfo->max_v_samp_factor * NUM_COMPONENT * DCTSIZE2;
-  input_buffer  = sizeof(JCOEF) * (cinfo->max_h_samp_factor * cinfo->max_v_samp_factor + 2) *
-               cinfo->MCUs_per_row * cinfo->total_iMCU_rows * DCTSIZE2;
+    cinfo->max_v_samp_factor * NUM_COMPONENT * DCTSIZE2;
   /* Determine if the opencl version will be used */
-  if(cinfo->num_components==1||
-     (cinfo->blocks_in_MCU!=6 && cinfo->blocks_in_MCU!=3 && cinfo->blocks_in_MCU!=4))
-     return CL_FALSE;
-  if(JCS_GRAYSCALE == cinfo->out_color_space)
-     return CL_FALSE;
+  if(cinfo->num_components==1|| cinfo->progressive_mode == 1 ||
+    (cinfo->blocks_in_MCU!=6 && cinfo->blocks_in_MCU!=3 && cinfo->blocks_in_MCU!=4))
+    return CL_FALSE;
+  if(JCS_RGB != cinfo->out_color_space)
+    return CL_FALSE;
+  if(cinfo->scale_denom != 1 || cinfo->scale_num != 1)
+    return CL_FALSE;
+  if(cinfo->desired_number_of_colors != 256 || cinfo->quantize_colors == TRUE)
+    return CL_FALSE;
+  if(cinfo->two_pass_quantize == FALSE || cinfo->dither_mode != JDITHER_FS ||
+    (cinfo->dct_method != JDCT_ISLOW && cinfo->dct_method != JDCT_IFAST &&
+    cinfo->dct_method != JDCT_FLOAT))
+    return CL_FALSE;
 
-  if((output_buffer > MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 6) ||
-  (input_buffer  > MAX_IMAGE_WIDTH * MAX_IMAGE_HEIGHT * 4))
+  if((output_buffer > buffer_output_size))
      return CL_FALSE;
   
   return CL_TRUE;
 }
+
+/*
+ * jocl_cl_get_fancy_status
+ * jocl_cl_set_fancy_status
+ *
+ * If the -nosmooth is used.
+ */
 
 cl_bool jocl_cl_get_fancy_status(void)
 {
@@ -687,4 +734,23 @@ cl_bool jocl_cl_get_fancy_status(void)
 void jocl_cl_set_fancy_status(void)
 {
   ocl_status.fancy_index = CL_FALSE;
+}
+
+/*
+ * jocl_cl_get_buffer_unit_size
+ *
+ * Determine the buffer size.
+ */
+
+unsigned long jocl_cl_get_buffer_unit_size(void)
+{
+  unsigned long buffer_output_size = 0;
+  unsigned long mem_size = ocl_status.mem_size;
+  
+  buffer_output_size = mem_size - (MCUNUMS * DCTSIZE2 * 18 * BUFFERNUMS);
+  if (mem_size > (MAX_BUFFER_SIZE + (MCUNUMS * DCTSIZE2 * 18 * BUFFERNUMS)))
+  {
+  	buffer_output_size = MAX_BUFFER_SIZE;
+  }
+  return buffer_output_size ;
 }

@@ -26,7 +26,7 @@ typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetPlatformIDs          
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetPlatformInfo                ) (cl_platform_id, cl_platform_info, size_t, void*, size_t*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetDeviceIDs                   ) (cl_platform_id, cl_device_type, cl_uint, cl_device_id*, cl_uint*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetDeviceInfo                  ) (cl_device_id, cl_device_info, size_t, void*, size_t*);
-typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clCreateSubDevices               ) (cl_device_id, const cl_device_partition_property*, cl_uint, cl_device_id*, cl_uint*);
+//typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clCreateSubDevices               ) (cl_device_id, const cl_device_partition_property*, cl_uint, cl_device_id*, cl_uint*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clRetainDevice                   ) (cl_device_id);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clReleaseDevice                  ) (cl_device_id);
 typedef CL_API_ENTRY cl_context       (CL_API_CALL *h_clCreateContext                  ) (const cl_context_properties*, cl_uint, const cl_device_id*, void (CL_CALLBACK*)(const char*, const void*, size_t, void*), void*, cl_int*);
@@ -40,7 +40,7 @@ typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clReleaseCommandQueue     
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetCommandQueueInfo            ) (cl_command_queue, cl_command_queue_info, size_t, void*, size_t*);
 typedef CL_API_ENTRY cl_mem           (CL_API_CALL *h_clCreateBuffer                   ) (cl_context, cl_mem_flags, size_t, void*, cl_int*);
 typedef CL_API_ENTRY cl_mem           (CL_API_CALL *h_clCreateSubBuffer                ) (cl_mem, cl_mem_flags, cl_buffer_create_type, const void*, cl_int*);
-typedef CL_API_ENTRY cl_mem           (CL_API_CALL *h_clCreateImage                    ) (cl_context, cl_mem_flags, const cl_image_format*, const cl_image_desc*, void*, cl_int*);
+//typedef CL_API_ENTRY cl_mem           (CL_API_CALL *h_clCreateImage                    ) (cl_context, cl_mem_flags, const cl_image_format*, const cl_image_desc*, void*, cl_int*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clRetainMemObject                ) (cl_mem);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clReleaseMemObject               ) (cl_mem);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetSupportedImageFormats       ) (cl_context, cl_mem_flags, cl_mem_object_type, cl_uint, cl_image_format*, cl_uint*);
@@ -68,7 +68,7 @@ typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clRetainKernel            
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clReleaseKernel                  ) (cl_kernel);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clSetKernelArg                   ) (cl_kernel, cl_uint, size_t, const void*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetKernelInfo                  ) (cl_kernel, cl_kernel_info, size_t, void*, size_t*);
-typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetKernelArgInfo               ) (cl_kernel, cl_uint, cl_kernel_arg_info, size_t, void*, size_t*);
+//typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetKernelArgInfo               ) (cl_kernel, cl_uint, cl_kernel_arg_info, size_t, void*, size_t*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetKernelWorkGroupInfo         ) (cl_kernel, cl_device_id, cl_kernel_work_group_info, size_t, void*, size_t*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clWaitForEvents                  ) (cl_uint, const cl_event*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clGetEventInfo                   ) (cl_event, cl_event_info, size_t, void*, size_t*);
@@ -96,7 +96,7 @@ typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueCopyBufferToImage
 typedef CL_API_ENTRY void *           (CL_API_CALL *h_clEnqueueMapBuffer               ) (cl_command_queue, cl_mem, cl_bool, cl_map_flags, size_t, size_t, cl_uint, const cl_event*, cl_event*, cl_int*);
 typedef CL_API_ENTRY void *           (CL_API_CALL *h_clEnqueueMapImage                ) (cl_command_queue, cl_mem, cl_bool, cl_map_flags, const size_t*, const size_t*, size_t*, size_t*, cl_uint, const cl_event*, cl_event*, cl_int*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueUnmapMemObject          ) (cl_command_queue, cl_mem, void*, cl_uint, const cl_event*, cl_event*);
-typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueMigrateMemObjects       ) (cl_command_queue, cl_uint, const cl_mem*, cl_mem_migration_flags, cl_uint, const cl_event*, cl_event*);
+//typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueMigrateMemObjects       ) (cl_command_queue, cl_uint, const cl_mem*, cl_mem_migration_flags, cl_uint, const cl_event*, cl_event*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueNDRangeKernel           ) (cl_command_queue, cl_kernel, cl_uint, const size_t*, const size_t*, const size_t*, cl_uint, const cl_event*, cl_event*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueTask                    ) (cl_command_queue, cl_kernel, cl_uint, const cl_event*, cl_event*);
 typedef CL_API_ENTRY cl_int           (CL_API_CALL *h_clEnqueueNativeKernel            ) (cl_command_queue, void (CL_CALLBACK*)(void*), void*, size_t, cl_uint, const cl_mem*, const void**, cl_uint, const cl_event*, cl_event*);
@@ -122,7 +122,7 @@ CL_LOADING_PREFIX h_clGetPlatformIDs                  jocl_clGetPlatformIDs     
 CL_LOADING_PREFIX h_clGetPlatformInfo                 jocl_clGetPlatformInfo                 CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clGetDeviceIDs                    jocl_clGetDeviceIDs                    CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clGetDeviceInfo                   jocl_clGetDeviceInfo                   CL_LOADING_SUFFIX;
-CL_LOADING_PREFIX h_clCreateSubDevices                jocl_clCreateSubDevices                CL_LOADING_SUFFIX;
+//CL_LOADING_PREFIX h_clCreateSubDevices                jocl_clCreateSubDevices                CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clRetainDevice                    jocl_clRetainDevice                    CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clReleaseDevice                   jocl_clReleaseDevice                   CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clCreateContext                   jocl_clCreateContext                   CL_LOADING_SUFFIX;
@@ -136,7 +136,7 @@ CL_LOADING_PREFIX h_clReleaseCommandQueue             jocl_clReleaseCommandQueue
 CL_LOADING_PREFIX h_clGetCommandQueueInfo             jocl_clGetCommandQueueInfo             CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clCreateBuffer                    jocl_clCreateBuffer                    CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clCreateSubBuffer                 jocl_clCreateSubBuffer                 CL_LOADING_SUFFIX;
-CL_LOADING_PREFIX h_clCreateImage                     jocl_clCreateImage                     CL_LOADING_SUFFIX;
+//CL_LOADING_PREFIX h_clCreateImage                     jocl_clCreateImage                     CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clRetainMemObject                 jocl_clRetainMemObject                 CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clReleaseMemObject                jocl_clReleaseMemObject                CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clGetSupportedImageFormats        jocl_clGetSupportedImageFormats        CL_LOADING_SUFFIX;
@@ -164,7 +164,7 @@ CL_LOADING_PREFIX h_clRetainKernel                    jocl_clRetainKernel       
 CL_LOADING_PREFIX h_clReleaseKernel                   jocl_clReleaseKernel                   CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clSetKernelArg                    jocl_clSetKernelArg                    CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clGetKernelInfo                   jocl_clGetKernelInfo                   CL_LOADING_SUFFIX;
-CL_LOADING_PREFIX h_clGetKernelArgInfo                jocl_clGetKernelArgInfo                CL_LOADING_SUFFIX;
+//CL_LOADING_PREFIX h_clGetKernelArgInfo                jocl_clGetKernelArgInfo                CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clGetKernelWorkGroupInfo          jocl_clGetKernelWorkGroupInfo          CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clWaitForEvents                   jocl_clWaitForEvents                   CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clGetEventInfo                    jocl_clGetEventInfo                    CL_LOADING_SUFFIX;
@@ -192,7 +192,7 @@ CL_LOADING_PREFIX h_clEnqueueCopyBufferToImage        jocl_clEnqueueCopyBufferTo
 CL_LOADING_PREFIX h_clEnqueueMapBuffer                jocl_clEnqueueMapBuffer                CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clEnqueueMapImage                 jocl_clEnqueueMapImage                 CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clEnqueueUnmapMemObject           jocl_clEnqueueUnmapMemObject           CL_LOADING_SUFFIX;
-CL_LOADING_PREFIX h_clEnqueueMigrateMemObjects        jocl_clEnqueueMigrateMemObjects        CL_LOADING_SUFFIX;
+//CL_LOADING_PREFIX h_clEnqueueMigrateMemObjects        jocl_clEnqueueMigrateMemObjects        CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clEnqueueNDRangeKernel            jocl_clEnqueueNDRangeKernel            CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clEnqueueTask                     jocl_clEnqueueTask                     CL_LOADING_SUFFIX;
 CL_LOADING_PREFIX h_clEnqueueNativeKernel             jocl_clEnqueueNativeKernel             CL_LOADING_SUFFIX;
@@ -203,7 +203,9 @@ CL_LOADING_PREFIX h_clSetPrintfCallback               jocl_clSetPrintfCallback  
 #undef CL_LOADING_PREFIX
 #undef CL_LOADING_SUFFIX
 
-
+#ifdef __APPLE__
+#define CL_MAP_WRITE_INVALIDATE_REGION  CL_MAP_WRITE
+#endif
 /*
  * Definition run_data structure of kernels.
  * Forward declaration the OpenCL initialization API.
@@ -235,13 +237,14 @@ cl_bool          jocl_cl_is_opencl_decompress      (j_decompress_ptr cinfo);
 cl_bool          jocl_cl_is_nvidia_opencl          (void);
 void             jocl_cl_set_fancy_status          (void);
 cl_bool          jocl_cl_get_fancy_status          (void);
+unsigned long	 jocl_cl_get_buffer_unit_size      (void);
 
 /*
  * The macro definition for exception handling code.
  */
 
 #define CL_DEBUG_NOTE(...)                                               \
-  printf(__VA_ARGS__)
+  //printf(__VA_ARGS__)
 
 #define CL_SAFE_CALL0(func, action)                                      \
   func;                                                                  \

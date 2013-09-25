@@ -16,12 +16,12 @@
 #define __JPEG_OPENCL_DECODING_H__
 
 /* Global OpenCL buffer and mapping variables. */
-extern cl_mem   jocl_global_data_mem_input;
+extern cl_mem   jocl_global_data_mem_input[BUFFERNUMS];
 extern cl_mem   jocl_global_data_mem_output;
 extern cl_mem   jocl_global_data_mem_qutable;
 extern cl_mem   jocl_global_data_mem_inter;
 extern float*   jocl_global_data_ptr_qutable;
-extern JCOEFPTR jocl_global_data_ptr_input;
+extern JCOEFPTR jocl_global_data_ptr_input[BUFFERNUMS];
 extern JSAMPROW jocl_global_data_ptr_output;
 
 /* Compile OpenCL kernels. */
@@ -35,5 +35,7 @@ cl_bool jocldec_run_kernels_full_image(
   unsigned int mcu_in_width,      /* Number of MCUs in image width */
   unsigned int offset_input,      /* The offset of buffer used to calculate the global ID */
   int total_mcu_num,              /* The total MCU-number of an image */
-  int decodeMCU);                 /* The number of MCUs will be decoded */
+  int decodeMCU,                  /* The number of MCUs will be decoded */
+  int buffer_flag,                /* The index of buffer will be used */
+  cl_event* buffer_event);        /* The event of OpenCL sent by clEnqueueNDRangeKernel() */
 #endif
