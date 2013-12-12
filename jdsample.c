@@ -110,7 +110,8 @@ sep_upsample (j_decompress_ptr cinfo,
 
   /* Fill the conversion buffer, if it's empty */
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-  if (CL_FALSE == jocl_cl_is_available() && upsample->next_row_out >= cinfo->max_v_samp_factor) {
+  OCL_STATUS * ocl_status =  (OCL_STATUS* )cinfo->jocl_openClinfo;
+  if (CL_FALSE == jocl_cl_is_available(ocl_status) && upsample->next_row_out >= cinfo->max_v_samp_factor) {
 #else
   if (upsample->next_row_out >= cinfo->max_v_samp_factor) {
 #endif
@@ -127,7 +128,7 @@ sep_upsample (j_decompress_ptr cinfo,
   }
 
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-     if (CL_TRUE == jocl_cl_is_available())
+     if (CL_TRUE == jocl_cl_is_available(ocl_status))
         upsample->next_row_out = 0;
 #endif
   /* Color-convert and emit rows */
@@ -145,15 +146,18 @@ sep_upsample (j_decompress_ptr cinfo,
     num_rows = out_rows_avail;
 
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-  if (CL_TRUE == jocl_cl_is_available()) {
-    memcpy(*output_buf, jocl_global_data_ptr_output + cinfo->output_scanline * 
-      cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT, 
-      cinfo->image_width * NUM_COMPONENT);
-    //*output_buf = &jocl_global_data_ptr_output[cinfo->output_scanline * 
-    //  cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
-    if(num_rows == 2) {
-      *(output_buf + 1) =  &jocl_global_data_ptr_output[(cinfo->output_scanline + 1) * 
+  if (CL_TRUE == jocl_cl_is_available(ocl_status)) {
+    if (TRUE == cinfo->opencl_rgb_flag)
+      *output_buf = &ocl_status->jocl_global_data_ptr_output[cinfo->output_scanline *
         cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+    else {
+      memcpy(*output_buf, ocl_status->jocl_global_data_ptr_output + cinfo->output_scanline *
+        cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT, 
+        cinfo->image_width * NUM_COMPONENT);
+      if (num_rows == 2) {
+        *(output_buf + 1) = &ocl_status->jocl_global_data_ptr_output[(cinfo->output_scanline + 1) *
+          cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+      }
     }
   }
   else

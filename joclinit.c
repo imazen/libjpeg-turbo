@@ -12,6 +12,8 @@
 #define __JOCL_CL_INIT_MAIN__
 #include "jinclude.h"
 #include "jpeglib.h"
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+
 #include "CL/opencl.h"
 #include "joclinit.h"
 #undef  __JOCL_CL_INIT_MAIN__
@@ -20,30 +22,8 @@
 #define CL_QUEUE_THREAD_HANDLE_AMD 0x403E
 #define CL_PARAM_NUM 20
 #endif
-/*
- * OCL_STATIS ocl_status
- * Store all the informations of OpenCL platform.
- */
 
-typedef struct
-{
-  cl_platform_id   platform_id;
-  cl_device_id     device_id;
-  cl_context       context;
-  cl_command_queue command_queue;
-  cl_bool          is_opencl_available;
-  cl_bool          is_opencl_support;
-  cl_bool          fancy_index;
-  unsigned long    mem_size;
-  char             platform_profile   [1024];
-  char             platform_version   [1024];
-  char             platform_name      [1024];
-  char             platform_vendor    [1024];
-  char             platform_extensions[1024];
-  char             device_name        [1024];
-} OCL_STATUS;
-
-static OCL_STATUS ocl_status = {NULL, NULL, NULL, NULL, CL_FALSE, CL_FALSE, CL_FALSE, 0};
+//static OCL_STATUS ocl_status = {NULL, NULL, NULL, NULL, CL_FALSE, CL_FALSE, CL_FALSE, CL_FALSE, CL_FALSE, CL_FALSE, 0};
 
 
 /*
@@ -166,13 +146,44 @@ const char* jocl_cl_errstring(cl_int err_code)
     return CL_FALSE;                                                           \
   }
 #endif
-cl_bool jocl_cl_init()
+cl_bool jocl_cl_init(void **jocl_openClinfo)
 {
+    char*  platformVendor;
+    char * deviceName ;
+    char *ocl_disable;
 #ifdef JOCL_CL_OS_WIN32
   void *handle = INVALID_HANDLE_VALUE;
   int ret;
 #endif
-  if (!ocl_status.is_opencl_available) {
+
+  OCL_STATUS * ocl_status;
+  if( NULL == *jocl_openClinfo)
+  {
+
+      *jocl_openClinfo =  (void *)malloc(sizeof(OCL_STATUS));
+      if( NULL == *jocl_openClinfo)
+      {
+          return -1;
+      }
+      memset(*jocl_openClinfo,0,sizeof(OCL_STATUS));
+      ocl_status = ((OCL_STATUS *)(*jocl_openClinfo));
+      ocl_status->is_opencl_available = CL_FALSE;
+      ocl_status->is_opencl_support = CL_FALSE;
+      ocl_status->fancy_index = CL_FALSE;
+
+  }
+  ocl_disable = getenv("LJT_DISABLE_OPENCL");
+  if(ocl_disable != NULL)
+  {
+      if( 0 == strcmp("TRUE",ocl_disable))
+      {
+          ocl_status->is_opencl_available = CL_FALSE;
+          ocl_status->is_opencl_support = CL_FALSE;
+          ocl_status->fancy_index = CL_FALSE;
+          return CL_FALSE;
+      }
+  }
+  if (!ocl_status->is_opencl_available) {
     cl_int          err_code;
     cl_uint         num_platform;
     cl_uint         num_device;
@@ -180,7 +191,9 @@ cl_bool jocl_cl_init()
     cl_device_id*   dids;
     cl_uint         index;
 	unsigned int    num_gpu_device = 0;
-
+    char*           version_ocl_inter = NULL;
+    char*           version_ocl = NULL;
+    int             version_length = 0;
 #ifdef JOCL_CL_OS_WIN32
     HINSTANCE       module;
     module = LoadLibraryW(L"OpenCL.dll");
@@ -204,16 +217,16 @@ cl_bool jocl_cl_init()
     CL_LOAD_FUNCTION(clReleaseDevice                  );*/
     CL_LOAD_FUNCTION(clCreateContext                  );
     /* CL_LOAD_FUNCTION(clCreateContextFromType       );
-    CL_LOAD_FUNCTION(clRetainContext                  );
+    CL_LOAD_FUNCTION(clRetainContext                  );*/
     CL_LOAD_FUNCTION(clReleaseContext                 );
-    CL_LOAD_FUNCTION(clGetContextInfo                 );*/
+    /* CL_LOAD_FUNCTION(clGetContextInfo              );*/
     CL_LOAD_FUNCTION(clCreateCommandQueue             );
-    /* CL_LOAD_FUNCTION(clRetainCommandQueue          );
-    CL_LOAD_FUNCTION(clReleaseCommandQueue            );*/
+    /* CL_LOAD_FUNCTION(clRetainCommandQueue          );*/
+    CL_LOAD_FUNCTION(clReleaseCommandQueue            );
     CL_LOAD_FUNCTION(clGetCommandQueueInfo            );
     CL_LOAD_FUNCTION(clCreateBuffer                   );
-    /* CL_LOAD_FUNCTION(clCreateSubBuffer             );
-    CL_LOAD_FUNCTION(clCreateImage                    );
+    CL_LOAD_FUNCTION(clCreateSubBuffer                );
+    /* CL_LOAD_FUNCTION(clCreateImage                 );
     CL_LOAD_FUNCTION(clRetainMemObject                );*/
     CL_LOAD_FUNCTION(clReleaseMemObject               );
     /* CL_LOAD_FUNCTION(clGetSupportedImageFormats    );*/
@@ -227,8 +240,8 @@ cl_bool jocl_cl_init()
     CL_LOAD_FUNCTION(clCreateProgramWithSource        );
     CL_LOAD_FUNCTION(clCreateProgramWithBinary        );
     /* CL_LOAD_FUNCTION(clCreateProgramWithBuiltInKernels);
-    CL_LOAD_FUNCTION(clRetainProgram                  );
-    CL_LOAD_FUNCTION(clReleaseProgram                 );*/
+    CL_LOAD_FUNCTION(clRetainProgram                  );*/
+    CL_LOAD_FUNCTION(clReleaseProgram                 );
     CL_LOAD_FUNCTION(clBuildProgram                   );
     /* CL_LOAD_FUNCTION(clCompileProgram              );
     CL_LOAD_FUNCTION(clLinkProgram                    );
@@ -237,8 +250,8 @@ cl_bool jocl_cl_init()
     CL_LOAD_FUNCTION(clGetProgramBuildInfo            );
     CL_LOAD_FUNCTION(clCreateKernel                   );
     /* CL_LOAD_FUNCTION(clCreateKernelsInProgram      );
-    CL_LOAD_FUNCTION(clRetainKernel                   );
-    CL_LOAD_FUNCTION(clReleaseKernel                  );*/
+    CL_LOAD_FUNCTION(clRetainKernel                   );*/
+    CL_LOAD_FUNCTION(clReleaseKernel                  );
     CL_LOAD_FUNCTION(clSetKernelArg                   );
     /*CL_LOAD_FUNCTION(clGetKernelInfo                );
     CL_LOAD_FUNCTION(clGetKernelArgInfo               );*/
@@ -253,8 +266,8 @@ cl_bool jocl_cl_init()
     CL_LOAD_FUNCTION(clGetEventProfilingInfo          );*/
     CL_LOAD_FUNCTION(clFlush                          );
     CL_LOAD_FUNCTION(clFinish                         );
-    /* CL_LOAD_FUNCTION(clEnqueueReadBuffer           );
-    CL_LOAD_FUNCTION(clEnqueueReadBufferRect          );*/
+    CL_LOAD_FUNCTION(clEnqueueReadBuffer              );
+    /* CL_LOAD_FUNCTION(clEnqueueReadBufferRect       );*/
     CL_LOAD_FUNCTION(clEnqueueWriteBuffer             );
     /* CL_LOAD_FUNCTION(clEnqueueWriteBufferRect      );
     CL_LOAD_FUNCTION(clEnqueueFillBuffer              );
@@ -284,50 +297,72 @@ cl_bool jocl_cl_init()
       CL_DEBUG_NOTE("NO CL PLATFORM!\n");
       return CL_FALSE;
     }
+    // Check for Environmental variable for opencl platform.
+   // if not present select the AMD platform if present
+   platformVendor=getenv("LJT_OPENCL_PLATFORMVENDOR");
+   if(NULL == platformVendor)
+       platformVendor = "Advanced Micro Devices, Inc.";
 
     pids = (cl_platform_id*)malloc(num_platform * sizeof(cl_platform_id));
 
     CL_SAFE_CALL1(err_code = jocl_clGetPlatformIDs(num_platform, pids, NULL),
       return CL_FALSE, pids);
 
+    //Select the platform
+    // if amd platform is not present select the last platform
     for (index = 0 ; index < num_platform ; ++index ) {
-      ocl_status.platform_id = pids[index];
+      ocl_status->platform_id = pids[index];
 
-      CL_SAFE_CALL1(err_code = jocl_clGetPlatformInfo(ocl_status.platform_id,
-        CL_PLATFORM_VENDOR, sizeof(ocl_status.platform_vendor),
-        ocl_status.platform_vendor, NULL), return CL_FALSE, pids);
-
-      if (0 == strcmp(ocl_status.platform_vendor,
-        "Advanced Micro Devices, Inc."))
-        break;
+      CL_SAFE_CALL1(err_code = jocl_clGetPlatformInfo(ocl_status->platform_id,
+        CL_PLATFORM_VENDOR, sizeof(ocl_status->platform_vendor),
+        ocl_status->platform_vendor, NULL), return CL_FALSE, pids);
+      if(NULL != platformVendor)
+      {
+        if (0 == strcmp(ocl_status->platform_vendor,
+            platformVendor))
+            break;
+      }
     }
 
     free(pids);
 
-    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status.platform_id,
-      CL_PLATFORM_PROFILE, sizeof(ocl_status.platform_profile),
-      ocl_status.platform_profile, NULL), return CL_FALSE);
+    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status->platform_id,
+      CL_PLATFORM_PROFILE, sizeof(ocl_status->platform_profile),
+      ocl_status->platform_profile, NULL), return CL_FALSE);
 
-    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status.platform_id,
-      CL_PLATFORM_VERSION, sizeof(ocl_status.platform_version),
-      ocl_status.platform_version, NULL), return CL_FALSE);
+    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status->platform_id,
+      CL_PLATFORM_VERSION, sizeof(ocl_status->platform_version),
+      ocl_status->platform_version, NULL), return CL_FALSE);
 
-    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status.platform_id,
-      CL_PLATFORM_NAME, sizeof(ocl_status.platform_name),
-      ocl_status.platform_name, NULL), return CL_FALSE);
+    version_ocl_inter = ocl_status->platform_version + 7;
+    for(; *version_ocl_inter != ' '; version_ocl_inter++) {
+      version_length++;
+    }
+    version_ocl = (char *) malloc((version_length + 1)* sizeof(char));
+    strncpy(version_ocl, ocl_status->platform_version + 7, version_length);
+    version_ocl[version_length] = '\0';
 
-    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status.platform_id,
-      CL_PLATFORM_EXTENSIONS, sizeof(ocl_status.platform_extensions),
-      ocl_status.platform_extensions, NULL), return CL_FALSE);
+    if(strcmp(version_ocl, "1.2") >= 0) {
+      ocl_status->is_version1_2_ocl = CL_TRUE;
+    }
+    free(version_ocl);
+
+    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status->platform_id,
+      CL_PLATFORM_NAME, sizeof(ocl_status->platform_name),
+      ocl_status->platform_name, NULL), return CL_FALSE);
+
+    CL_SAFE_CALL0(err_code = jocl_clGetPlatformInfo(ocl_status->platform_id,
+      CL_PLATFORM_EXTENSIONS, sizeof(ocl_status->platform_extensions),
+      ocl_status->platform_extensions, NULL), return CL_FALSE);
 
     CL_DEBUG_NOTE("Platform:\nprofile: %s\nversion: %s\nname: %s\n"
       "vendor: %s\nextensions: %s\n"
-      , ocl_status.platform_profile, ocl_status.platform_version
-      , ocl_status.platform_name, ocl_status.platform_vendor
-      , ocl_status.platform_extensions);
+      , ocl_status->platform_profile, ocl_status->platform_version
+      , ocl_status->platform_name, ocl_status->platform_vendor
+      , ocl_status->platform_extensions);
 
     /* ********* Get and select a device. ********* */
-    CL_SAFE_CALL0(err_code = jocl_clGetDeviceIDs(ocl_status.platform_id,
+    CL_SAFE_CALL0(err_code = jocl_clGetDeviceIDs(ocl_status->platform_id,
       CL_DEVICE_TYPE_ALL, 0, NULL, &num_device), return CL_FALSE);
     if ( num_device < 1 ) {
       CL_DEBUG_NOTE("NO DEVICE FOUND!\n");
@@ -336,54 +371,71 @@ cl_bool jocl_cl_init()
 
     dids = (cl_device_id*)malloc(num_device * sizeof(cl_device_id));
 
-    CL_SAFE_CALL1(err_code = jocl_clGetDeviceIDs(ocl_status.platform_id,
-      CL_DEVICE_TYPE_ALL, num_device, dids, NULL), return CL_FALSE, dids);
-
-	for ( index = 0 ; index < num_device ; ++index ) {
-	  cl_device_type d_type;
-	  ocl_status.device_id = dids[index];
-	  CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
-	  	CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
-	  	return CL_FALSE, dids);
-	  if(CL_DEVICE_TYPE_GPU == d_type)
-	  	num_gpu_device++;
-	}
-	for (index = 0; index < num_device; ++index) {
-	  cl_device_type d_type;
-	  ocl_status.device_id = dids[index];
-	  CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
-	    CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
-	    return CL_FALSE, dids);
-	  CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
-	    CL_DEVICE_NAME, sizeof(ocl_status.device_name), ocl_status.device_name, NULL),
-	    return CL_FALSE);
-	  if(CL_DEVICE_TYPE_GPU == d_type) {
-	    num_gpu_device--;
-	    if (0 == strcmp(ocl_status.device_name,
-	      "Devastator"))
-	      break;
-	  }
-	  if(num_gpu_device == 0)
-	    break;
-	}
-	CL_DEBUG_NOTE("Device:\nName: %s\n",ocl_status.device_name);
+    CL_SAFE_CALL1(err_code = jocl_clGetDeviceIDs(ocl_status->platform_id,
+    CL_DEVICE_TYPE_ALL, num_device, dids, NULL), return CL_FALSE, dids);
+    deviceName = platformVendor=getenv("LJT_OPENCLDEVICE");
+    if(NULL != deviceName)
+    {
+        // Select the device specified by user through environmental variable
+        // if not select the 0th device
+        for (index = (num_device-1); index >= 0; --index)
+        {
+            ocl_status->device_id = dids[index];
+            CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status->device_id,
+            CL_DEVICE_NAME, sizeof(ocl_status->device_name), ocl_status->device_name, NULL),
+            return CL_FALSE);
+            if (0 == strcmp(ocl_status->device_name,deviceName))
+            break;
+        }
+    }
+    else
+    {
+	    for ( index = 0 ; index < num_device ; ++index ) {
+	      cl_device_type d_type;
+	      ocl_status->device_id = dids[index];
+	      CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status->device_id,
+	  	    CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
+	  	    return CL_FALSE, dids);
+	      if(CL_DEVICE_TYPE_GPU == d_type)
+	  	    num_gpu_device++;
+	    }
+	    for (index = 0; index < num_device; ++index) {
+	      cl_device_type d_type;
+	      ocl_status->device_id = dids[index];
+	      CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status->device_id,
+	        CL_DEVICE_TYPE, sizeof(cl_device_type), &d_type, NULL),
+	        return CL_FALSE, dids);
+	      CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status->device_id,
+	        CL_DEVICE_NAME, sizeof(ocl_status->device_name), ocl_status->device_name, NULL),
+	        return CL_FALSE);
+	      if(CL_DEVICE_TYPE_GPU == d_type) {
+	        num_gpu_device--;
+	        if (0 == strcmp(ocl_status->device_name,
+	          "Devastator"))
+	          break;
+	      }
+	      if(num_gpu_device == 0)
+	        break;
+	    }
+    }
+	CL_DEBUG_NOTE("Device:\nName: %s\n",ocl_status->device_name);
 	/* AMD A10-4600M APU with Radeon(tm) HD Graphics */
 
     free(dids);
-	CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
+	CL_SAFE_CALL0(err_code = jocl_clGetDeviceInfo(ocl_status->device_id,
 	  CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_device_type),
-	  &ocl_status.mem_size, NULL), return CL_FALSE);
+	  &ocl_status->mem_size, NULL), return CL_FALSE);
 
     /* ********* Create a context. ********* */
-    ocl_status.context = CL_SAFE_CALL0(jocl_clCreateContext(NULL,
-      1, &ocl_status.device_id, NULL, NULL, &err_code), return CL_FALSE);
+    ocl_status->context = CL_SAFE_CALL0(jocl_clCreateContext(NULL,
+      1, &ocl_status->device_id, NULL, NULL, &err_code), return CL_FALSE);
 
     /* ********* Create a command queue. ********* */
-    ocl_status.command_queue = CL_SAFE_CALL0(jocl_clCreateCommandQueue(
-      ocl_status.context, ocl_status.device_id, 0, &err_code),
+    ocl_status->command_queue = CL_SAFE_CALL0(jocl_clCreateCommandQueue(
+      ocl_status->context, ocl_status->device_id, 0, &err_code),
       return CL_FALSE);
 #ifdef JOCL_CL_OS_WIN32
-    if( jocl_clGetCommandQueueInfo( ocl_status.command_queue,
+    if( jocl_clGetCommandQueueInfo( ocl_status->command_queue,
       CL_QUEUE_THREAD_HANDLE_AMD, sizeof(handle),
       &handle, NULL ) == CL_SUCCESS && handle != INVALID_HANDLE_VALUE ) {
       if(SetThreadPriority( handle, THREAD_PRIORITY_TIME_CRITICAL )) {
@@ -398,9 +450,9 @@ cl_bool jocl_cl_init()
     }  
 #endif
     /* *** OpenCL initialized successfully, modify the mark. *** */
-    ocl_status.is_opencl_available = CL_TRUE;
-    ocl_status.is_opencl_support = CL_TRUE;
-    ocl_status.fancy_index = CL_TRUE;
+    ocl_status->is_opencl_available = CL_TRUE;
+    ocl_status->is_opencl_support = CL_TRUE;
+    ocl_status->fancy_index = CL_TRUE;
     CL_DEBUG_NOTE("OpenCL is enabled.\n");
   }
   return CL_TRUE;
@@ -416,7 +468,8 @@ cl_bool jocl_cl_init()
  *   then create kernels that specified in kernel_name[].
  */
 
-JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
+JOCL_CL_RUNDATA* jocl_cl_compile_and_build(void * jocl_openClinfo,
+                                           const char**  program_source,
                                            const char*  kernel_name[])
 {
   int i;
@@ -429,9 +482,10 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
   int b_error, binary_status;
   char *binary;
   size_t length_binary;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
   num_device = 1;
   /* Perform this operation only when OpenCL is available. */
-  if (ocl_status.is_opencl_available) {   
+  if (ocl_status->is_opencl_available) {
     JOCL_CL_RUNDATA* cl_data = NULL;
     cl_int  err_code;
     cl_uint index;
@@ -450,14 +504,14 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
     cl_data = (JOCL_CL_RUNDATA*)
       malloc(sizeof(JOCL_CL_RUNDATA));
 
-    CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status.device_id,
+    CL_SAFE_CALL1(err_code = jocl_clGetDeviceInfo(ocl_status->device_id,
       CL_DEVICE_NAME, sizeof(deviceName), deviceName, NULL),
       return NULL, cl_data);
     sprintf(fileName, "%s_%s.bin", cl_name, deviceName);
 
     if(!(fp = fopen(fileName,"rb"))){
       CL_SAFE_CALL1(cl_data->program = jocl_clCreateProgramWithSource(
-        ocl_status.context, 7, program_source, length, &err_code),
+        ocl_status->context, 7, program_source, length, &err_code),
         return NULL, cl_data);
 
       /* Compile OpenCL code. If error, output the error informations. */
@@ -470,13 +524,13 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
         cl_uint build_error = err_code;
       
         CL_SAFE_CALL1(err_code = jocl_clGetProgramBuildInfo(
-          cl_data->program, ocl_status.device_id, CL_PROGRAM_BUILD_LOG,
+          cl_data->program, ocl_status->device_id, CL_PROGRAM_BUILD_LOG,
           0, NULL, &sz_msg), return NULL, cl_data);
       
         /* Output the error informations. */
         err_msg = (char*)malloc(sz_msg);
         CL_SAFE_CALL2(err_code = jocl_clGetProgramBuildInfo(
-          cl_data->program, ocl_status.device_id, CL_PROGRAM_BUILD_LOG,
+          cl_data->program, ocl_status->device_id, CL_PROGRAM_BUILD_LOG,
           sz_msg, err_msg, NULL), return NULL, err_msg, cl_data);
       
         CL_DEBUG_NOTE("OpenCL Build Error:%s\n%s\n",
@@ -527,10 +581,10 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
       memset(binary, 0, length_binary + 2);
       b_error |= fread(binary, 1, length_binary, fp) != length_binary;
       CL_SAFE_CALL1(cl_data->program = jocl_clCreateProgramWithBinary(
-        ocl_status.context, 1, &ocl_status.device_id, &length_binary,
+        ocl_status->context, 1, &ocl_status->device_id, &length_binary,
         (const unsigned char**) &binary, &binary_status,&err_code),
-        return NULL, cl_data);
-
+        NULL, cl_data);
+       
       /* Compile OpenCL code. If error, output the error informations. */
       CL_SAFE_CALL1(err_code = jocl_clBuildProgram(cl_data->program,
         0, NULL, NULL, NULL, NULL), return NULL, cl_data);
@@ -541,13 +595,13 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
         cl_uint build_error = err_code;
       
         CL_SAFE_CALL1(err_code = jocl_clGetProgramBuildInfo(
-          cl_data->program, ocl_status.device_id, CL_PROGRAM_BUILD_LOG,
+          cl_data->program, ocl_status->device_id, CL_PROGRAM_BUILD_LOG,
           0, NULL, &sz_msg), return NULL, cl_data);
       
         /* Output the error informations. */
         err_msg = (char*)malloc(sz_msg);
         CL_SAFE_CALL2(err_code = jocl_clGetProgramBuildInfo(
-          cl_data->program, ocl_status.device_id, CL_PROGRAM_BUILD_LOG,
+          cl_data->program, ocl_status->device_id, CL_PROGRAM_BUILD_LOG,
           sz_msg, err_msg, NULL), return NULL, err_msg, cl_data);
 
         CL_DEBUG_NOTE("OpenCL Build Error:%s\n%s\n",
@@ -557,6 +611,7 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
         free(cl_data);
         return NULL;
       }
+      free(binary);
       /* Build Successfully. */
       CL_DEBUG_NOTE("Compiling OpenCL code successfully.\n");
     }
@@ -571,7 +626,7 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
         , return NULL, cl_data->kernel, cl_data->work_group_size, cl_data);
 
       CL_SAFE_CALL3(err_code = jocl_clGetKernelWorkGroupInfo(
-        cl_data->kernel[index], ocl_status.device_id,
+        cl_data->kernel[index], ocl_status->device_id,
         CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t),
         &cl_data->work_group_size[index], NULL),
         return NULL, cl_data->kernel, cl_data->work_group_size, cl_data);
@@ -597,34 +652,40 @@ JOCL_CL_RUNDATA* jocl_cl_compile_and_build(const char**  program_source,
  *   so I'm not going to comment them one by one.
  */
 
-cl_bool          jocl_cl_is_available(void)
+cl_bool          jocl_cl_is_available(void * jocl_openClinfo)
 {
-  return ocl_status.is_opencl_available;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->is_opencl_available;
 }
 
-cl_bool          jocl_cl_is_support_opencl(void)
+cl_bool          jocl_cl_is_support_opencl(void * jocl_openClinfo)
 {
-  return ocl_status.is_opencl_support;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->is_opencl_support;
 }
 
-cl_platform_id   jocl_cl_get_platform(void)
+cl_platform_id   jocl_cl_get_platform(void * jocl_openClinfo)
 {
-  return ocl_status.platform_id;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->platform_id;
 }
 
-cl_device_id     jocl_cl_get_device(void)
+cl_device_id     jocl_cl_get_device(void * jocl_openClinfo)
 {
-  return ocl_status.device_id;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->device_id;
 }
 
-cl_context       jocl_cl_get_context(void)
+cl_context       jocl_cl_get_context(void * jocl_openClinfo)
 {
-  return ocl_status.context;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->context;
 }
 
-cl_command_queue jocl_cl_get_command_queue(void)
+cl_command_queue jocl_cl_get_command_queue(void * jocl_openClinfo)
 {
-  return ocl_status.command_queue;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->command_queue;
 }
 
 /*
@@ -634,9 +695,10 @@ cl_command_queue jocl_cl_get_command_queue(void)
  *   Set the flag to disable OpenCL.
  */
 
-void jocl_cl_set_opencl_failure(void)
+void jocl_cl_set_opencl_failure(void * jocl_openClinfo)
 {
-  ocl_status.is_opencl_available = CL_FALSE;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  ocl_status->is_opencl_available = CL_FALSE;
 }
 
 /*
@@ -645,9 +707,10 @@ void jocl_cl_set_opencl_failure(void)
  * If OpenCL is available, set the flag to enable OpenCL.
  */
 
-void jocl_cl_set_opencl_success(void)
+void jocl_cl_set_opencl_success(void * jocl_openClinfo)
 {
-  ocl_status.is_opencl_available = CL_TRUE;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  ocl_status->is_opencl_available = CL_TRUE;
 }
 
 /*
@@ -657,9 +720,10 @@ void jocl_cl_set_opencl_success(void)
  *   Set the flag to disable OpenCL.
  */
 
-void jocl_cl_set_opencl_support_failure(void)
+void jocl_cl_set_opencl_support_failure(void * jocl_openClinfo)
 {
-  ocl_status.is_opencl_support = CL_FALSE;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  ocl_status->is_opencl_support = CL_FALSE;
 }
 
 /*
@@ -669,9 +733,10 @@ void jocl_cl_set_opencl_support_failure(void)
  * 
  */
  
-cl_bool jocl_cl_is_nvidia_opencl(void)
+cl_bool jocl_cl_is_nvidia_opencl(void * jocl_openClinfo)
 {
-  if (0 == strcmp(ocl_status.platform_vendor,
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  if (0 == strcmp(ocl_status->platform_vendor,
         "NVIDIA Corporation"))
     return CL_TRUE;
   else {
@@ -692,10 +757,9 @@ cl_bool jocl_cl_is_nvidia_opencl(void)
 cl_bool jocl_cl_is_opencl_decompress(j_decompress_ptr cinfo)
 {
   unsigned int output_buffer;
-  unsigned long buffer_output_size = jocl_cl_get_buffer_unit_size();
+  unsigned long buffer_output_size = jocl_cl_get_buffer_unit_size((OCL_STATUS* )cinfo->jocl_openClinfo,cinfo->image_width,cinfo->image_height);
 
   /* output_buffer: the size of actual output */
-  /* input_buffer : the size of actual input  */
   output_buffer = cinfo->MCUs_per_row * cinfo->total_iMCU_rows * cinfo->max_h_samp_factor * 
     cinfo->max_v_samp_factor * NUM_COMPONENT * DCTSIZE2;
   /* Determine if the opencl version will be used */
@@ -709,10 +773,11 @@ cl_bool jocl_cl_is_opencl_decompress(j_decompress_ptr cinfo)
   if(cinfo->desired_number_of_colors != 256 || cinfo->quantize_colors == TRUE)
     return CL_FALSE;
   if(cinfo->two_pass_quantize == FALSE || cinfo->dither_mode != JDITHER_FS ||
-    (cinfo->dct_method != JDCT_ISLOW && cinfo->dct_method != JDCT_IFAST &&
-    cinfo->dct_method != JDCT_FLOAT))
+    (cinfo->dct_method != JDCT_ISLOW && cinfo->dct_method != JDCT_IFAST))
     return CL_FALSE;
-
+  if(CL_TRUE == jocl_cl_get_fancy_status((OCL_STATUS* )cinfo->jocl_openClinfo) && cinfo->blocks_in_MCU == 6 &&
+    (cinfo->MCUs_per_row > MCUNUMS))
+    return CL_FALSE;
   if((output_buffer > buffer_output_size))
      return CL_FALSE;
   
@@ -726,14 +791,16 @@ cl_bool jocl_cl_is_opencl_decompress(j_decompress_ptr cinfo)
  * If the -nosmooth is used.
  */
 
-cl_bool jocl_cl_get_fancy_status(void)
+cl_bool jocl_cl_get_fancy_status(void * jocl_openClinfo)
 {
-  return ocl_status.fancy_index;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->fancy_index;
 }
 
-void jocl_cl_set_fancy_status(void)
+void jocl_cl_set_fancy_status(void * jocl_openClinfo)
 {
-  ocl_status.fancy_index = CL_FALSE;
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  ocl_status->fancy_index = CL_FALSE;
 }
 
 /*
@@ -742,10 +809,11 @@ void jocl_cl_set_fancy_status(void)
  * Determine the buffer size.
  */
 
-unsigned long jocl_cl_get_buffer_unit_size(void)
+unsigned long jocl_cl_get_buffer_unit_size(void * jocl_openClinfo,unsigned int image_width,unsigned int image_height)
 {
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
   unsigned long buffer_output_size = 0;
-  unsigned long mem_size = ocl_status.mem_size;
+  unsigned long mem_size = ocl_status->mem_size;
   
   buffer_output_size = mem_size - (MCUNUMS * DCTSIZE2 * 18 * BUFFERNUMS);
   if (mem_size > (MAX_BUFFER_SIZE + (MCUNUMS * DCTSIZE2 * 18 * BUFFERNUMS)))
@@ -754,3 +822,54 @@ unsigned long jocl_cl_get_buffer_unit_size(void)
   }
   return buffer_output_size ;
 }
+
+/*
+ * jocl_cl_get_decode_support
+ * jocl_cl_set_decode_support
+ *
+ * Determine support opencl decoding.
+ */
+
+cl_bool jocl_cl_get_decode_support(void * jocl_openClinfo)
+{
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->decode_support;
+}
+
+void jocl_cl_set_decode_support(void * jocl_openClinfo)
+{
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  ocl_status->decode_support = CL_TRUE;
+}
+
+/*
+ * jocl_cl_get_ocl_version
+ *
+ * Get OpenCL version.
+ */
+
+cl_bool jocl_cl_get_ocl_version(void * jocl_openClinfo)
+{
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->is_version1_2_ocl;
+}
+
+/*
+ * jocl_cl_get_output_format
+ * jocl_cl_set_output_format
+ *
+ * Whether the output format is bmp.
+ */
+
+cl_bool jocl_cl_get_output_format(void * jocl_openClinfo)
+{
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  return ocl_status->output_format_bmp;
+}
+
+void jocl_cl_set_output_format(void * jocl_openClinfo)
+{
+  OCL_STATUS * ocl_status = ((OCL_STATUS *)jocl_openClinfo);
+  ocl_status->output_format_bmp = CL_TRUE;
+}
+#endif

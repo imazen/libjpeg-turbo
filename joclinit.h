@@ -219,25 +219,65 @@ typedef struct
   size_t*    work_group_size;
 } JOCL_CL_RUNDATA;
 
+/*
+ * OCL_STATIS ocl_status
+ * Store all the informations of OpenCL platform.
+ */
+
+typedef struct
+{
+  cl_platform_id   platform_id;
+  cl_device_id     device_id;
+  cl_context       context;
+  cl_command_queue command_queue;
+  cl_bool          is_opencl_available;
+  cl_bool          is_opencl_support;
+  cl_bool          fancy_index;
+  cl_bool          decode_support;
+  cl_bool          output_format_bmp;
+  cl_bool          is_version1_2_ocl;
+  unsigned long    mem_size;
+  char             platform_profile   [1024];
+  char             platform_version   [1024];
+  char             platform_name      [1024];
+  char             platform_vendor    [1024];
+  char             platform_extensions[1024];
+  char             device_name        [1024];
+  cl_mem   jocl_global_data_mem_output      ;
+  cl_mem   jocl_global_data_mem_qutable     ;
+  cl_mem   jocl_global_data_mem_input      [BUFFERNUMS];
+  cl_mem   jocl_global_data_mem_inter      [BUFFERNUMS];
+  cl_mem   jocl_global_data_mem_prior_inter[BUFFERNUMS];
+  JCOEFPTR jocl_global_data_ptr_input      [BUFFERNUMS];
+  JSAMPROW jocl_global_data_ptr_output      ;
+  float*   jocl_global_data_ptr_qutable     ;
+  JOCL_CL_RUNDATA* jocldec_cl_rundata;
+} OCL_STATUS;
 
 const char*      jocl_cl_errstring                 (cl_int err_code);
-cl_bool          jocl_cl_init                      (void);
-JOCL_CL_RUNDATA* jocl_cl_compile_and_build         (const char** program_source,
+cl_bool          jocl_cl_init                      (void **jocl_openClinfo);
+JOCL_CL_RUNDATA* jocl_cl_compile_and_build         (void *jocl_openClinfo,
+                                                    const char** program_source,
                                                     const char*  kernel_name[]);
-cl_bool          jocl_cl_is_support_opencl         (void);
-cl_bool          jocl_cl_is_available              (void);
-cl_platform_id   jocl_cl_get_platform              (void);
-cl_device_id     jocl_cl_get_device                (void);
-cl_context       jocl_cl_get_context               (void);
-cl_command_queue jocl_cl_get_command_queue         (void);
-void             jocl_cl_set_opencl_failure        (void);
-void             jocl_cl_set_opencl_success        (void);
-void             jocl_cl_set_opencl_support_failure(void);
+cl_bool          jocl_cl_is_support_opencl         (void *jocl_openClinfo);
+cl_bool          jocl_cl_is_available              (void *jocl_openClinfo);
+cl_platform_id   jocl_cl_get_platform              (void *jocl_openClinfo);
+cl_device_id     jocl_cl_get_device                (void *jocl_openClinfo);
+cl_context       jocl_cl_get_context               (void *jocl_openClinfo);
+cl_command_queue jocl_cl_get_command_queue         (void *jocl_openClinfo);
+void             jocl_cl_set_opencl_failure        (void *jocl_openClinfo);
+void             jocl_cl_set_opencl_success        (void *jocl_openClinfo);
+void             jocl_cl_set_opencl_support_failure(void *jocl_openClinfo);
 cl_bool          jocl_cl_is_opencl_decompress      (j_decompress_ptr cinfo);
-cl_bool          jocl_cl_is_nvidia_opencl          (void);
-void             jocl_cl_set_fancy_status          (void);
-cl_bool          jocl_cl_get_fancy_status          (void);
-unsigned long	 jocl_cl_get_buffer_unit_size      (void);
+cl_bool          jocl_cl_is_nvidia_opencl          (void *jocl_openClinfo);
+void             jocl_cl_set_fancy_status          (void *jocl_openClinfo);
+cl_bool          jocl_cl_get_fancy_status          (void *jocl_openClinfo);
+unsigned long	 jocl_cl_get_buffer_unit_size      (void *jocl_openClinfo,unsigned int image_width,unsigned int image_height);
+cl_uint          jocl_cl_get_decode_support        (void *jocl_openClinfo);
+void             jocl_cl_set_decode_support        (void *jocl_openClinfo);
+cl_bool          jocl_cl_get_ocl_version           (void *jocl_openClinfo);
+cl_bool          jocl_cl_get_output_format         (void *jocl_openClinfo);
+void             jocl_cl_set_output_format         (void *jocl_openClinfo);
 
 /*
  * The macro definition for exception handling code.

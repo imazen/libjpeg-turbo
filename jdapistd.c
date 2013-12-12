@@ -45,6 +45,12 @@ LOCAL(boolean) output_pass_setup JPP((j_decompress_ptr cinfo));
 GLOBAL(boolean)
 jpeg_start_decompress (j_decompress_ptr cinfo)
 {
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  cl_int err_code;
+  unsigned long    buffer_output_size = 0;
+  OCL_STATUS *ocl_status = (OCL_STATUS *)cinfo->jocl_openClinfo;
+#endif
+
   if (cinfo->global_state == DSTATE_READY) {
     /* First call: initialize master control, select active modules */
     jinit_master_decompress(cinfo);
@@ -57,11 +63,41 @@ jpeg_start_decompress (j_decompress_ptr cinfo)
   }
 
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
+  if (CL_TRUE == jocl_cl_is_support_opencl(ocl_status))
+  {
+	  buffer_output_size = cinfo->MCUs_per_row * cinfo->total_iMCU_rows * cinfo->max_h_samp_factor *
+			  cinfo->max_v_samp_factor * NUM_COMPONENT * DCTSIZE2;
+	  if (CL_TRUE == jocl_cl_is_nvidia_opencl(ocl_status))
+	  {
+		  ocl_status->jocl_global_data_ptr_output = (JSAMPROW)malloc(buffer_output_size);
+		  memset(ocl_status->jocl_global_data_ptr_output, 0, buffer_output_size);
+		  CL_SAFE_CALL0(ocl_status->jocl_global_data_mem_output = jocl_clCreateBuffer(jocl_cl_get_context(ocl_status),
+				  CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR,
+				  buffer_output_size, NULL, &err_code),return err_code);
+	  }
+	  else
+	  {
+		  CL_SAFE_CALL0(ocl_status->jocl_global_data_mem_output = jocl_clCreateBuffer(jocl_cl_get_context(ocl_status),
+				  CL_MEM_WRITE_ONLY | CL_MEM_ALLOC_HOST_PTR,
+				  buffer_output_size, NULL, &err_code),return err_code);
+
+
+		  CL_SAFE_CALL0(ocl_status->jocl_global_data_ptr_output = (JSAMPROW)jocl_clEnqueueMapBuffer(
+				  jocl_cl_get_command_queue(ocl_status), ocl_status->jocl_global_data_mem_output, CL_TRUE,
+				  CL_MAP_READ, 0, buffer_output_size,0, NULL, NULL, &err_code),return err_code);
+
+		  CL_SAFE_CALL0(err_code = jocl_clEnqueueUnmapMemObject(
+				  jocl_cl_get_command_queue(ocl_status), ocl_status->jocl_global_data_mem_output,
+				  ocl_status->jocl_global_data_ptr_output, 0, NULL, NULL),return err_code);
+	  }
+  }
   /* Determine whether the OpenCL decoding will be used.*/
-  if(jocl_cl_is_support_opencl() && jocl_cl_is_opencl_decompress(cinfo))
-    jocl_cl_set_opencl_success();
-  else
-    jocl_cl_set_opencl_failure();
+  if(jocl_cl_get_fancy_status((OCL_STATUS* )cinfo->jocl_openClinfo) && jocl_cl_is_opencl_decompress(cinfo))
+	  jocl_cl_set_opencl_success((OCL_STATUS* )cinfo->jocl_openClinfo);
+  else {
+	  jocl_cl_set_opencl_failure((OCL_STATUS* )cinfo->jocl_openClinfo);
+	  cinfo->opencl_rgb_flag = FALSE;
+  }
 #endif
 
   if (cinfo->global_state == DSTATE_PRELOAD) {
@@ -178,6 +214,9 @@ jpeg_read_scanlines (j_decompress_ptr cinfo, JSAMPARRAY scanlines,
     return 0;
   }
 
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  jocl_cl_set_decode_support((OCL_STATUS* )cinfo->jocl_openClinfo);
+#endif
   /* Call progress monitor hook if present */
   if (cinfo->progress != NULL) {
     cinfo->progress->pass_counter = (long) cinfo->output_scanline;

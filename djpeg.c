@@ -205,6 +205,9 @@ parse_switches (j_decompress_ptr cinfo, int argc, char **argv,
 
     if (keymatch(arg, "bmp", 1)) {
       /* BMP output format. */
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+      cinfo->opencl_rgb_flag = TRUE;
+#endif
       requested_fmt = FMT_BMP;
 
     } else if (keymatch(arg, "colors", 1) || keymatch(arg, "colours", 1) ||
@@ -468,6 +471,12 @@ main (int argc, char **argv)
 #ifdef USE_CCOMMAND
   argc = ccommand(&argv);
 #endif
+#ifdef PERFORMANCE_COUNTER
+  time = 0.0;
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  interval = 0;
+#endif
 
   progname = argv[0];
   if (progname == NULL || progname[0] == 0)
@@ -625,11 +634,40 @@ main (int argc, char **argv)
   }
   dest_mgr->output_file = output_file;
 
+#ifdef PERFORMANCE_COUNTER
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&start);
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  gettimeofday(&start, NULL);
+#endif
+
   /* Start decompressor */
   (void) jpeg_start_decompress(&cinfo);
 
+#ifdef PERFORMANCE_COUNTER
+  QueryPerformanceCounter(&end);
+  time = (double)(end.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+  printf("Start Decompress total time : %.10f ms\n", 1000*time);
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  gettimeofday(&end, NULL);
+  interval = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec);
+  printf("Start Decompress total time : %.10f ms\n", interval / 1000.0);
+#endif
+
+
   /* Write output file header */
   (*dest_mgr->start_output) (&cinfo, dest_mgr);
+
+#ifdef PERFORMANCE_COUNTER
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&start);
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  gettimeofday(&start, NULL);
+#endif
+
 
   /* Process data */
   while (cinfo.output_scanline < cinfo.output_height) {
@@ -638,6 +676,16 @@ main (int argc, char **argv)
     (*dest_mgr->put_pixel_rows) (&cinfo, dest_mgr, num_scanlines);
   }
 
+#ifdef PERFORMANCE_COUNTER
+  QueryPerformanceCounter(&end); 
+  time = (double)(end.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+  printf("decoder total time : %.10f ms\n", 1000*time); 
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  gettimeofday(&end, NULL);
+  interval = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec);
+  printf("decoder total time : %.10f ms\n", interval / 1000.0); 
+#endif
 #ifdef PROGRESS_REPORT
   /* Hack: count final pass as done in case finish_output does an extra pass.
    * The library won't have updated completed_passes.
@@ -651,7 +699,26 @@ main (int argc, char **argv)
    */
   (*dest_mgr->finish_output) (&cinfo, dest_mgr);
   (void) jpeg_finish_decompress(&cinfo);
+#ifdef PERFORMANCE_COUNTER
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&start);
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  gettimeofday(&start, NULL);
+#endif
+
   jpeg_destroy_decompress(&cinfo);
+#ifdef PERFORMANCE_COUNTER
+  QueryPerformanceCounter(&end);
+  time = (double)(end.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+  printf("Destroy total time : %.10f ms\n", 1000*time);
+#endif
+#ifdef PERFORMANCE_COUNTER_LINUX
+  gettimeofday(&end, NULL);
+  interval = 1000000 * (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec);
+  printf("Destroy total time : %.10f ms\n", interval / 1000.0);
+#endif
+
 
   /* Close files, if we opened them */
   if (input_file != stdin)

@@ -172,14 +172,15 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
   int mcuy  = 0, index = 0;
   int block = cinfo->MCUs_per_row;
-  int i, j, upfactor,buffer_index;
+  int i, j, upfactor,buffer_index, buffer_index_next;
   int qutable[128];
+  OCL_STATUS * ocl_status =  (OCL_STATUS* )cinfo->jocl_openClinfo;
   float  qutable_float[128];
-  short* qutable_short_inter = (short *)jocl_global_data_ptr_qutable;
-  int*   qutable_int_inter = (int *)jocl_global_data_ptr_qutable;
+  short* qutable_short_inter = (short *)ocl_status->jocl_global_data_ptr_qutable;
+  int*   qutable_int_inter = (int *)ocl_status->jocl_global_data_ptr_qutable;
   cl_event buffer_event[BUFFERNUMS];
-
-  unsigned long buffer_output_size = jocl_cl_get_buffer_unit_size();
+  int mcunum_buffer = MCUNUMS / cinfo->MCUs_per_row *  cinfo->MCUs_per_row;
+  unsigned long buffer_output_size = jocl_cl_get_buffer_unit_size(ocl_status,cinfo->image_width,cinfo->image_height);
 
   /*offset_input is used to compute the offset of input and output for Kernel*/
   unsigned int offset_input = 0;
@@ -188,7 +189,10 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
   int decodeMCU = 0;
   int total_mcu_num = cinfo->total_iMCU_rows * rows_per_iMCU_row * cinfo->MCUs_per_row;
   int buffer_flag = 0;
-  /* int info;*/
+  cl_int err_code;
+  int num_buffer_inter = 10;
+  int num_buffer = BUFFERNUMS / num_buffer_inter;
+  cl_bool version_ocl = jocl_cl_get_ocl_version(ocl_status);
   /*IDCT FAST SHORT*/
   static const int aanscales[DCTSIZE2] = {
 	  /* precomputed values scaled up by 14 bits */
@@ -204,91 +208,100 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
   /*IDCT FAST FLOAT */
   static const double aanscalefactor[8] = {1.0, 1.387039845, 1.306562965, 1.175875602,
                                            1.0, 0.785694958, 0.541196100, 0.275899379};
+  /* Determine whether the OpenCL decoding will be used.*/
+  if (jocl_cl_is_support_opencl(ocl_status) && jocl_cl_get_decode_support(ocl_status)&& jocl_cl_is_opencl_decompress(cinfo))
+    jocl_cl_set_opencl_success(ocl_status);
+  else {
+    jocl_cl_set_opencl_failure(ocl_status);
+    cinfo->opencl_rgb_flag = FALSE;
+  }
 
-  if (CL_TRUE == jocl_cl_is_available()) { 
-    switch (cinfo->dct_method){
-	  case JDCT_IFAST:{
-	    /*IDCT FAST INT*/
-        for (i = 0; i < DCTSIZE2; ++i) {
-          qutable[i] = cinfo->quant_tbl_ptrs[0]->quantval[i];
-        }
-        if (cinfo->quant_tbl_ptrs[1]->quantval != NULL) {
+  if (CL_TRUE == jocl_cl_is_available(ocl_status)) {
+    if (cinfo->input_iMCU_row == 0) {
+      switch (cinfo->dct_method){
+	    case JDCT_IFAST:{
+	      /*IDCT FAST INT*/
           for (i = 0; i < DCTSIZE2; ++i) {
-            qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[1]->quantval[i];
+            qutable[i] = cinfo->quant_tbl_ptrs[0]->quantval[i];
           }
-        }
-        else {
-          for (i = 0; i < DCTSIZE2; ++i) {
-            qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[0]->quantval[i];
+          if (cinfo->quant_tbl_ptrs[1]->quantval != NULL) {
+            for (i = 0; i < DCTSIZE2; ++i) {
+              qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[1]->quantval[i];
+            }
           }
-        }
-        for(i = 0; i < DCTSIZE ; ++i)
-          for(j = 0 ; j < DCTSIZE ; ++j) {
-            qutable_short_inter[j*8+i] = ((qutable[i*8+j] * aanscales[i*8+j]) +
-              (1 << ((12)-1))) >> 12;
-            qutable_short_inter[DCTSIZE2+j*8+i] = ((qutable[DCTSIZE2 + i*8+j] *
-              aanscales[i*8+j]) + (1 << ((12)-1))) >> 12;
+          else {
+            for (i = 0; i < DCTSIZE2; ++i) {
+              qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[0]->quantval[i];
+            }
+          }
+          for(i = 0; i < DCTSIZE ; ++i)
+            for(j = 0 ; j < DCTSIZE ; ++j) {
+              qutable_short_inter[j*8+i] = ((qutable[i*8+j] * aanscales[i*8+j]) +
+                (1 << ((12)-1))) >> 12;
+              qutable_short_inter[DCTSIZE2+j*8+i] = ((qutable[DCTSIZE2 + i*8+j] *
+                aanscales[i*8+j]) + (1 << ((12)-1))) >> 12;
+	      }
+		  break;
 	    }
-		break;
+	    case JDCT_FLOAT:{
+	      /*IDCT FAST FLOAT*/ 
+          for (i = 0; i < DCTSIZE2; ++i) {
+            qutable_float[i] = cinfo->quant_tbl_ptrs[0]->quantval[i];
+          }
+          if (cinfo->quant_tbl_ptrs[1]->quantval != NULL) {
+            for (i = 0; i < DCTSIZE2; ++i) {
+              qutable_float[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[1]->quantval[i];
+            }
+          }
+          else {
+            for (i = 0; i < DCTSIZE2; ++i) {
+              qutable_float[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[0]->quantval[i];
+            }
+          }
+	      for (i = 0; i < 8; i++) 
+            for (j = 0; j < 8; j++) {
+              ocl_status->jocl_global_data_ptr_qutable[j * 8 + i] = (float)(qutable_float[i * 8 + j] *
+                aanscalefactor[i] * aanscalefactor[j]);
+              ocl_status->jocl_global_data_ptr_qutable[DCTSIZE2 + j * 8 + i] = (float)(qutable_float[DCTSIZE2 + i * 8 + j] *
+                aanscalefactor[i] * aanscalefactor[j]);
+            }
+		  break;
+	    }
+	    case JDCT_ISLOW: {
+	      /*IDCT SLOW INT*/
+          for (i = 0; i < DCTSIZE2; ++i) {
+            qutable[i] = cinfo->quant_tbl_ptrs[0]->quantval[i];
+          }
+          if (cinfo->quant_tbl_ptrs[1]->quantval != NULL) {
+            for (i = 0; i < DCTSIZE2; ++i) {
+              qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[1]->quantval[i];
+            }
+          }
+          else {
+            for (i = 0; i < DCTSIZE2; ++i) {
+              qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[0]->quantval[i];
+            }
+          }
+          for (i = 0; i < 8; i++)
+            for (j = 0; j < 8; j++) {
+              qutable_int_inter[j * 8 + i] = qutable[i * 8 + j];
+              qutable_int_inter[DCTSIZE2 + j * 8 + i] = qutable[DCTSIZE2 + i * 8 + j];
+            }
+	      break;
+        }
 	  }
-	  case JDCT_FLOAT:{
-	    /*IDCT FAST FLOAT*/ 
-        for (i = 0; i < DCTSIZE2; ++i) {
-          qutable_float[i] = cinfo->quant_tbl_ptrs[0]->quantval[i];
-        }
-        if (cinfo->quant_tbl_ptrs[1]->quantval != NULL) {
-          for (i = 0; i < DCTSIZE2; ++i) {
-            qutable_float[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[1]->quantval[i];
-          }
-        }
-        else {
-          for (i = 0; i < DCTSIZE2; ++i) {
-            qutable_float[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[0]->quantval[i];
-          }
-        }
-	    for (i = 0; i < 8; i++) 
-          for (j = 0; j < 8; j++) {
-            jocl_global_data_ptr_qutable[j * 8 + i] = (float)(qutable_float[i * 8 + j] *
-              aanscalefactor[i] * aanscalefactor[j]);
-            jocl_global_data_ptr_qutable[DCTSIZE2 + j * 8 + i] = (float)(qutable_float[DCTSIZE2 + i * 8 + j] *
-              aanscalefactor[i] * aanscalefactor[j]);
-          }
-		break;
-	  }
-	  case JDCT_ISLOW: {
-	    /*IDCT SLOW INT*/
-        for (i = 0; i < DCTSIZE2; ++i) {
-          qutable[i] = cinfo->quant_tbl_ptrs[0]->quantval[i];
-        }
-        if (cinfo->quant_tbl_ptrs[1]->quantval != NULL) {
-          for (i = 0; i < DCTSIZE2; ++i) {
-            qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[1]->quantval[i];
-          }
-        }
-        else {
-          for (i = 0; i < DCTSIZE2; ++i) {
-            qutable[i + DCTSIZE2] = cinfo->quant_tbl_ptrs[0]->quantval[i];
-          }
-        }
-        for (i = 0; i < 8; i++)
-          for (j = 0; j < 8; j++) {
-            qutable_int_inter[j * 8 + i] = qutable[i * 8 + j];
-            qutable_int_inter[DCTSIZE2 + j * 8 + i] = qutable[DCTSIZE2 + i * 8 + j];
-          }
-	    break;
+      if (cinfo->max_v_samp_factor == 2) {
+        if (cinfo->max_h_samp_factor == 1)
+          upfactor = 5;
+        else
+          upfactor = 6;
+      } 
+      else if (cinfo->max_h_samp_factor == 2) {
+        upfactor = 4;
       }
-	}
-    if(cinfo->max_v_samp_factor == 2) {
-      if(cinfo->max_h_samp_factor == 1)
-        upfactor = 5;
-      else
-        upfactor = 6;
-    } 
-    else if (cinfo->max_h_samp_factor == 2) {
-      upfactor = 4;
-    }
-    else {
-      upfactor = 3;
+      else {
+        upfactor = 3;
+      }
     }
     for (; cinfo->input_iMCU_row < cinfo->total_iMCU_rows; 
       (cinfo->input_iMCU_row)++) {
@@ -297,60 +310,168 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
         yoffset++) {
         for (MCU_col_num = coef->MCU_ctr; MCU_col_num <= last_MCU_col;
           MCU_col_num++) {
-#ifdef PERFORMANCE_PPA
-  PPAStartCpuEventFunc(huffman);
-#endif
-            buffer_index = buffer_flag % BUFFERNUMS;
-
-            if(buffer_flag > (BUFFERNUMS - 1) && mcuy == 0) {
-             /*jocl_clGetEventInfo(buffer_event[buffer_index], CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(info),&info,NULL);*/
-             jocl_clWaitForEvents(1, &buffer_event[buffer_index]);
+          if (upfactor == 6 && CL_TRUE == jocl_cl_get_fancy_status(ocl_status)) {
+            //printf("H2V2 fancy \n");
+            buffer_index = buffer_flag % num_buffer_inter;
+            if (buffer_index == (num_buffer_inter - 1)) buffer_index_next = 0;
+            else buffer_index_next = buffer_index + 1;
+            if (CL_FALSE == jocl_cl_is_nvidia_opencl(ocl_status)&& mcuy == 0) {
+		      if (buffer_flag > (num_buffer_inter - 1)) {
+               CL_SAFE_CALL0(err_code = jocl_clWaitForEvents(1, &buffer_event[buffer_index]),return CL_FALSE);
+              }
             }
-
-          if (CL_TRUE== jocl_cl_is_available()) {
 #ifndef JOCL_CL_OS_WIN32
-            if(CL_FALSE == jocl_cl_is_nvidia_opencl()) {
-              jocl_global_data_ptr_input[buffer_index] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
-                jocl_cl_get_command_queue(), jocl_global_data_mem_input[buffer_index], CL_TRUE,
-                CL_MAP_WRITE_INVALIDATE_REGION, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
-                0, NULL, NULL, NULL);
+            if (CL_FALSE == jocl_cl_is_nvidia_opencl(ocl_status)) {
+              if (version_ocl) {
+                CL_SAFE_CALL0(ocl_status->jocl_global_data_ptr_input[buffer_index] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
+                  jocl_cl_get_command_queue(ocl_status), ocl_status->jocl_global_data_mem_input[buffer_index], CL_TRUE,
+                  CL_MAP_WRITE_INVALIDATE_REGION, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
+                  0, NULL, NULL, &err_code),return CL_FALSE);
+              }
+              else {
+                CL_SAFE_CALL0(ocl_status->jocl_global_data_ptr_input[buffer_index] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
+                  jocl_cl_get_command_queue(ocl_status), ocl_status->jocl_global_data_mem_input[buffer_index], CL_TRUE,
+                  CL_MAP_WRITE, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
+                  0, NULL, NULL, &err_code),return CL_FALSE);
+              }
             }
 #endif
+          for (index = 0; index < cinfo->blocks_in_MCU; ++index)
+            coef->MCU_buffer[index] = (JBLOCKROW)(ocl_status->jocl_global_data_ptr_input[buffer_index] +
+              mcuy++ * DCTSIZE2);
 
-            for (index = 0; index < cinfo->blocks_in_MCU; ++index)
-              coef->MCU_buffer[index] = (JBLOCKROW)(jocl_global_data_ptr_input[buffer_index] +
-                mcuy++ * DCTSIZE2);
-          }
-          if (! (*cinfo->entropy->decode_mcu) (cinfo, coef->MCU_buffer)) {
-            /* Suspension forced; update state counters and exit */
-            coef->MCU_vert_offset = yoffset;
-            coef->MCU_ctr = MCU_col_num;
-            return JPEG_SUSPENDED;
-          }
-          decodeMCU++;
-          mcudecoder++;
-#ifdef PERFORMANCE_PPA
-   PPAStopCpuEventFunc(huffman);
-#endif
-          if (
+            /* Try to fetch an MCU.  Entropy decoder expects buffer to be zeroed. */
+            if (CL_TRUE == jocl_cl_is_nvidia_opencl(ocl_status)) {
+              jzero_far((void FAR *) coef->MCU_buffer[0],
+	  	        (size_t) (cinfo->blocks_in_MCU * SIZEOF(JBLOCK)));
+            }
+            if (! (*cinfo->entropy->decode_mcu) (cinfo, coef->MCU_buffer)) {
+              /* Suspension forced; update state counters and exit */
+              coef->MCU_vert_offset = yoffset;
+              coef->MCU_ctr = MCU_col_num;
+              return JPEG_SUSPENDED;
+            }
+ 
+            decodeMCU++;
+            mcudecoder++;
+            if (
 #ifdef OPENCL_PIPELINE
-            decodeMCU % MCUNUMS==0 ||
+              0 == decodeMCU % mcunum_buffer ||
 #endif
-            (decodeMCU == cinfo->total_iMCU_rows *
-            coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
-            jocldec_run_kernels_full_image(cinfo,
-                                           upfactor,
-                                           mcudecoder,
-                                           block,
-                                           offset_input,
-                                           total_mcu_num,
-                                           decodeMCU,
-                                           buffer_index,
-                                           buffer_event);
-            offset_input += mcudecoder;
-            mcudecoder = 0;
-            mcuy = 0;
-            buffer_flag ++;
+              (decodeMCU == cinfo->total_iMCU_rows *
+              coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
+              jocldec_run_kernels_h2v2_fancy(cinfo,
+                                             upfactor,
+                                             mcudecoder,
+                                             block,
+                                             offset_input,
+                                             total_mcu_num,
+                                             decodeMCU,
+                                             buffer_index,
+                                             buffer_event,
+                                             mcunum_buffer);
+              offset_input += mcudecoder;
+              mcudecoder = 0;
+              mcuy = 0;
+              buffer_flag ++;
+            }
+          }
+          else {
+            buffer_index = buffer_flag % BUFFERNUMS;
+            if (buffer_index == 9) buffer_index_next = 0;
+            else buffer_index_next = buffer_index + 1;
+            if (CL_FALSE == jocl_cl_is_nvidia_opencl(ocl_status) && (CL_FALSE == jocl_cl_get_fancy_status(ocl_status) ||
+              upfactor != 4)) {
+		      if (buffer_flag > (BUFFERNUMS - 1) && mcuy == 0) {
+               CL_SAFE_CALL0(err_code = jocl_clWaitForEvents(1, &buffer_event[buffer_index]), return CL_FALSE);
+              }
+            }
+#ifndef JOCL_CL_OS_WIN32
+            if (CL_FALSE == jocl_cl_is_nvidia_opencl(ocl_status)) {
+              if (version_ocl) {
+                CL_SAFE_CALL0(ocl_status->jocl_global_data_ptr_input[buffer_index] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
+                  jocl_cl_get_command_queue(ocl_status), ocl_status->jocl_global_data_mem_input[buffer_index], CL_TRUE,
+                  CL_MAP_WRITE_INVALIDATE_REGION, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
+                  0, NULL, NULL, &err_code),return CL_FALSE);
+              }
+              else {
+                CL_SAFE_CALL0(ocl_status->jocl_global_data_ptr_input[buffer_index] = (JCOEFPTR)jocl_clEnqueueMapBuffer(
+                  jocl_cl_get_command_queue(ocl_status), ocl_status->jocl_global_data_mem_input[buffer_index], CL_TRUE,
+                  CL_MAP_WRITE, 0, MCUNUMS * DCTSIZE2 * 6 * sizeof(JCOEF),
+                  0, NULL, NULL, &err_code),return CL_FALSE);
+              }
+            }
+#endif
+            for (index = 0; index < cinfo->blocks_in_MCU; ++index)
+            coef->MCU_buffer[index] = (JBLOCKROW)(ocl_status->jocl_global_data_ptr_input[buffer_index] +
+                mcuy++ * DCTSIZE2);
+
+            /* Try to fetch an MCU.  Entropy decoder expects buffer to be zeroed. */
+            if (CL_TRUE == jocl_cl_is_nvidia_opencl(ocl_status)) {
+              jzero_far((void FAR *) coef->MCU_buffer[0],
+	  	        (size_t) (cinfo->blocks_in_MCU * SIZEOF(JBLOCK)));
+            }
+            if (! (*cinfo->entropy->decode_mcu) (cinfo, coef->MCU_buffer)) {
+              /* Suspension forced; update state counters and exit */
+              coef->MCU_vert_offset = yoffset;
+              coef->MCU_ctr = MCU_col_num;
+              return JPEG_SUSPENDED;
+            }
+            if (CL_TRUE == jocl_cl_get_fancy_status(ocl_status) && upfactor == 4) {
+              if (mcuy == cinfo->blocks_in_MCU * MCUNUMS) {
+                if (CL_FALSE == jocl_cl_is_nvidia_opencl(ocl_status) && (buffer_flag > (BUFFERNUMS - 2))) {
+                  CL_SAFE_CALL0(err_code = jocl_clWaitForEvents(1, &buffer_event[buffer_index_next]),return CL_FALSE);
+                }
+                memcpy(ocl_status->jocl_global_data_ptr_input[buffer_index_next],ocl_status->jocl_global_data_ptr_input[buffer_index] +
+                 (MCUNUMS - 1)* cinfo->blocks_in_MCU * DCTSIZE2, cinfo->blocks_in_MCU * DCTSIZE2 * sizeof(JCOEF));
+              }
+            }
+            decodeMCU++;
+            mcudecoder++;
+            if (CL_FALSE == jocl_cl_get_fancy_status(ocl_status) || (upfactor != 4 && upfactor != 6)) {
+              if (
+#ifdef OPENCL_PIPELINE
+                decodeMCU % MCUNUMS==0 ||
+#endif
+                (decodeMCU == cinfo->total_iMCU_rows *
+                coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
+                jocldec_run_kernels_full_image(cinfo,
+                                               upfactor,
+                                               mcudecoder,
+                                               block,
+                                               offset_input,
+                                               total_mcu_num,
+                                               decodeMCU,
+                                               buffer_index,
+                                               buffer_event);
+                offset_input += mcudecoder;
+                mcudecoder = 0;
+                mcuy = 0;
+                buffer_flag ++;
+              }
+            }
+		    else {
+              if (
+#ifdef OPENCL_PIPELINE
+                mcuy == cinfo->blocks_in_MCU * MCUNUMS ||
+#endif
+                (decodeMCU == cinfo->total_iMCU_rows *
+                coef->MCU_rows_per_iMCU_row * (last_MCU_col+1))) {
+                jocldec_run_kernels_full_image(cinfo,
+                                               upfactor,
+                                               mcudecoder,
+                                               block,
+                                               offset_input,
+                                               total_mcu_num,
+                                               decodeMCU,
+                                               buffer_index,
+                                               buffer_event);
+                offset_input ++;
+                mcuy = cinfo->blocks_in_MCU;
+                mcudecoder = 1;
+                buffer_flag ++;
+              }
+		    }
           }
         }
         /* Completed an MCU row, but perhaps not an iMCU row */
@@ -434,7 +555,6 @@ decompress_onepass (j_decompress_ptr cinfo, JSAMPIMAGE output_buf)
   return JPEG_SCAN_COMPLETED;
 }
 
-
 /*
  * Dummy consume-input routine for single-pass operation.
  */
@@ -466,6 +586,10 @@ consume_data (j_decompress_ptr cinfo)
   JBLOCKROW buffer_ptr;
   jpeg_component_info *compptr;
 
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  jocl_cl_set_opencl_failure((OCL_STATUS* )cinfo->jocl_openClinfo);
+  cinfo->opencl_rgb_flag = FALSE;
+#endif
   /* Align the virtual buffers for the components used in this scan. */
   for (ci = 0; ci < cinfo->comps_in_scan; ci++) {
     compptr = cinfo->cur_comp_info[ci];

@@ -4,6 +4,8 @@
  * Copyright (C) 1994-1996, Thomas G. Lane.
  * This file is part of the Independent JPEG Group's software.
  * For conditions of distribution and use, see the accompanying README file.
+ * Modifications:
+ * Copyright (C) 2012-2013, MulticoreWare Inc.
  *
  * This file contains routines to write output images in Microsoft "BMP"
  * format (MS Windows 3.x and OS/2 1.x flavors).
@@ -87,6 +89,15 @@ put_pixel_rows (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo,
   /* Transfer data.  Note destination values must be in BGR order
    * (even though Microsoft's own documents say the opposite).
    */
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  if (TRUE == cinfo->opencl_rgb_flag)
+  {
+    image_ptr[0] = dest->pub.buffer[0];
+    outptr = image_ptr[0];
+    if(dest->pad_bytes != 0) outptr += 3 * cinfo->output_width;
+  }
+  else {
+#endif
   inptr = dest->pub.buffer[0];
   outptr = image_ptr[0];
   for (col = cinfo->output_width; col > 0; col--) {
@@ -95,6 +106,9 @@ put_pixel_rows (j_decompress_ptr cinfo, djpeg_dest_ptr dinfo,
     outptr[0] = *inptr++;
     outptr += 3;
   }
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+ }
+#endif
 
   /* Zero out the pad bytes. */
   pad = dest->pad_bytes;

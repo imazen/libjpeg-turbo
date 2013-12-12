@@ -704,6 +704,10 @@ struct jpeg_decompress_struct {
   struct jpeg_upsampler * upsample;
   struct jpeg_color_deconverter * cconvert;
   struct jpeg_color_quantizer * cquantize;
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  boolean opencl_rgb_flag;
+  void *jocl_openClinfo;
+#endif
 };
 
 
@@ -1205,6 +1209,25 @@ struct jpeg_color_quantizer { long dummy; };
 #include "jerror.h"		/* fetch error codes too */
 #endif
 
+#ifdef JOCL_CL_OS_WIN32
+
+//#define PERFORMANCE_COUNTER
+#ifdef PERFORMANCE_COUNTER
+#include <windows.h>
+  LARGE_INTEGER start;   
+  LARGE_INTEGER end;   
+  LARGE_INTEGER freq; 
+  double time;
+#endif
+#else
+
+//#define PERFORMANCE_COUNTER_LINUX
+#ifdef PERFORMANCE_COUNTER_LINUX
+#include <sys/time.h>
+  struct timeval start, end;   
+  int interval;
+#endif
+#endif
 #ifdef __cplusplus
 #ifndef DONT_USE_EXTERN_C
 }

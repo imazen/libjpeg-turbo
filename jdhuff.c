@@ -611,7 +611,7 @@ decode_mcu_slow (j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
            * if k >= DCTSIZE2, which could happen if the data is corrupted.
            */
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-          if (!jocl_cl_is_available())
+          if (!jocl_cl_is_available((OCL_STATUS* )cinfo->jocl_openClinfo))
 #endif
           (*block)[jpeg_natural_order[k]] = (JCOEF) s;
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
@@ -703,7 +703,7 @@ decode_mcu_fast (j_decompress_ptr cinfo, JBLOCKROW *MCU_data)
           r = GET_BITS(s);
           s = HUFF_EXTEND(r, s);
 #ifdef WITH_OPENCL_DECODING_SUPPORTED
-          if (!jocl_cl_is_available())
+          if (!jocl_cl_is_available((OCL_STATUS* )cinfo->jocl_openClinfo))
 #endif
           (*block)[jpeg_natural_order[k]] = (JCOEF) s;
 #ifdef WITH_OPENCL_DECODING_SUPPORTED

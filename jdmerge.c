@@ -6,6 +6,7 @@
  * Copyright 2009 Pierre Ossman <ossman@cendio.se> for Cendio AB
  * Modifications:
  * Copyright (C) 2009, 2011, D. R. Commander.
+ * Copyright (C) 2012-2013, MulticoreWare Inc.
  * For conditions of distribution and use, see the accompanying README file.
  *
  * This file contains code for merged upsampling/color conversion.
@@ -40,6 +41,12 @@
 #include "jpeglib.h"
 #include "jsimd.h"
 #include "config.h"
+
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+#include "CL/opencl.h"
+#include "joclinit.h"
+#include "jocldec.h"
+#endif
 
 #ifdef UPSAMPLE_MERGING_SUPPORTED
 
@@ -257,11 +264,19 @@ merged_2v_upsample (j_decompress_ptr cinfo,
   my_upsample_ptr upsample = (my_upsample_ptr) cinfo->upsample;
   JSAMPROW work_ptrs[2];
   JDIMENSION num_rows;		/* number of rows returned to caller */
-
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  OCL_STATUS * ocl_status =  (OCL_STATUS* )cinfo->jocl_openClinfo;
+#endif
   if (upsample->spare_full) {
     /* If we have a spare row saved from a previous cycle, just return it. */
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+	  if (CL_FALSE == jocl_cl_is_available((OCL_STATUS* )cinfo->jocl_openClinfo)) {
+#endif
     jcopy_sample_rows(& upsample->spare_row, 0, output_buf + *out_row_ctr, 0,
 		      1, upsample->out_row_width);
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  }
+#endif
     num_rows = 1;
     upsample->spare_full = FALSE;
   } else {
@@ -283,8 +298,30 @@ merged_2v_upsample (j_decompress_ptr cinfo,
       upsample->spare_full = TRUE;
     }
     /* Now do the upsampling. */
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+    if (CL_FALSE == jocl_cl_is_available(ocl_status)) {
+#endif
     (*upsample->upmethod) (cinfo, input_buf, *in_row_group_ctr, work_ptrs);
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+    }
+#endif
   }
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  if (CL_TRUE == jocl_cl_is_available(ocl_status)) {
+    if (TRUE == cinfo->opencl_rgb_flag)
+      *output_buf = &ocl_status->jocl_global_data_ptr_output[cinfo->output_scanline *
+        cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+    else {
+      memcpy(*output_buf, ocl_status->jocl_global_data_ptr_output + cinfo->output_scanline *
+        cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT, 
+        cinfo->image_width * NUM_COMPONENT);
+      if (num_rows == 2) {
+        *(output_buf + 1) =  &ocl_status->jocl_global_data_ptr_output[(cinfo->output_scanline + 1) *
+          cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+      }
+    }
+  }
+#endif
 
   /* Adjust counts */
   *out_row_ctr += num_rows;
@@ -304,10 +341,26 @@ merged_1v_upsample (j_decompress_ptr cinfo,
 /* 1:1 vertical sampling case: much easier, never need a spare row. */
 {
   my_upsample_ptr upsample = (my_upsample_ptr) cinfo->upsample;
-
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  OCL_STATUS * ocl_status =  (OCL_STATUS* )cinfo->jocl_openClinfo;
+  if (CL_FALSE == jocl_cl_is_available(ocl_status)) {
+#endif
   /* Just do the upsampling. */
   (*upsample->upmethod) (cinfo, input_buf, *in_row_group_ctr,
 			 output_buf + *out_row_ctr);
+#ifdef WITH_OPENCL_DECODING_SUPPORTED
+  }
+  if (CL_TRUE == jocl_cl_is_available(ocl_status)) {
+    if (TRUE == cinfo->opencl_rgb_flag)
+      *output_buf = &ocl_status->jocl_global_data_ptr_output[cinfo->output_scanline *
+        cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT];
+    else {
+      memcpy(*output_buf, ocl_status->jocl_global_data_ptr_output + cinfo->output_scanline *
+        cinfo->max_h_samp_factor * cinfo->MCUs_per_row * DCTSIZE * NUM_COMPONENT, 
+        cinfo->image_width * NUM_COMPONENT);
+    }
+  }
+#endif
   /* Adjust counts */
   (*out_row_ctr)++;
   (*in_row_group_ctr)++;
