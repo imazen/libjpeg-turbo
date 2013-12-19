@@ -4,7 +4,7 @@
  * Copyright 2009 Pierre Ossman <ossman@cendio.se> for Cendio AB
  * Copyright 2009-2011 D. R. Commander
  * Copyright (C) 2013, MIPS Technologies, Inc., California
- * 
+ *
  * Based on the x86 SIMD extension for IJG JPEG library,
  * Copyright (C) 1999-2006, MIYASAKA Masaru.
  * For conditions of distribution and use, see copyright notice in jsimdext.inc
@@ -78,6 +78,12 @@ init_simd (void)
     return;
 #endif
 }
+static const int mips_idct_ifast_coefs[4] = {
+  0x45404540,           // FIX( 1.082392200 / 2) =  17734 = 0x4546
+  0x5A805A80,           // FIX( 1.414213562 / 2) =  23170 = 0x5A82
+  0x76407640,           // FIX( 1.847759065 / 2) =  30274 = 0x7642
+  0xAC60AC60            // FIX(-2.613125930 / 4) = -21407 = 0xAC61
+};
 
 GLOBAL(int)
 jsimd_can_rgb_ycc (void)
@@ -100,6 +106,18 @@ jsimd_can_rgb_ycc (void)
 GLOBAL(int)
 jsimd_can_rgb_gray (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if ((RGB_PIXELSIZE != 3) && (RGB_PIXELSIZE != 4))
+    return 0;
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    return 1;
+
   return 0;
 }
 
@@ -167,6 +185,40 @@ jsimd_rgb_gray_convert (j_compress_ptr cinfo,
                         JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
                         JDIMENSION output_row, int num_rows)
 {
+  void (*mipsdspr2fct)(JDIMENSION, JSAMPARRAY, JSAMPIMAGE, JDIMENSION, int);
+  switch(cinfo->in_color_space)
+  {
+    case JCS_EXT_RGB:
+      mipsdspr2fct=jsimd_extrgb_gray_convert_mips_dspr2;
+      break;
+    case JCS_EXT_RGBX:
+    case JCS_EXT_RGBA:
+      mipsdspr2fct=jsimd_extrgbx_gray_convert_mips_dspr2;
+      break;
+    case JCS_EXT_BGR:
+      mipsdspr2fct=jsimd_extbgr_gray_convert_mips_dspr2;
+      break;
+    case JCS_EXT_BGRX:
+    case JCS_EXT_BGRA:
+      mipsdspr2fct=jsimd_extbgrx_gray_convert_mips_dspr2;
+      break;
+    case JCS_EXT_XBGR:
+    case JCS_EXT_ABGR:
+      mipsdspr2fct=jsimd_extxbgr_gray_convert_mips_dspr2;
+      break;
+    case JCS_EXT_XRGB:
+    case JCS_EXT_ARGB:
+      mipsdspr2fct=jsimd_extxrgb_gray_convert_mips_dspr2;
+      break;
+    default:
+      mipsdspr2fct=jsimd_extrgb_gray_convert_mips_dspr2;
+      break;
+  }
+
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    mipsdspr2fct(cinfo->image_width, input_buf,
+        output_buf, output_row, num_rows);
+
 }
 
 GLOBAL(void)
@@ -401,12 +453,44 @@ jsimd_h2v1_merged_upsample (j_decompress_ptr cinfo,
 GLOBAL(int)
 jsimd_can_convsamp (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(DCTELEM) != 2)
+    return 0;
+
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    return 1;
+
   return 0;
 }
 
 GLOBAL(int)
 jsimd_can_convsamp_float (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(ISLOW_MULT_TYPE) != 2)
+    return 0;
+
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    return 1;
+
   return 0;
 }
 
@@ -414,23 +498,49 @@ GLOBAL(void)
 jsimd_convsamp (JSAMPARRAY sample_data, JDIMENSION start_col,
                 DCTELEM * workspace)
 {
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    jsimd_convsamp_mips_dspr2(sample_data, start_col, workspace);
 }
 
 GLOBAL(void)
 jsimd_convsamp_float (JSAMPARRAY sample_data, JDIMENSION start_col,
                       FAST_FLOAT * workspace)
 {
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    jsimd_convsamp_float_mips_dspr2(sample_data, start_col, workspace);
 }
 
 GLOBAL(int)
 jsimd_can_fdct_islow (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(DCTELEM) != 2)
+    return 0;
+
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    return 1;
+
   return 0;
 }
 
 GLOBAL(int)
 jsimd_can_fdct_ifast (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(DCTELEM) != 2)
+    return 0;
+
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    return 1;
+
   return 0;
 }
 
@@ -443,11 +553,15 @@ jsimd_can_fdct_float (void)
 GLOBAL(void)
 jsimd_fdct_islow (DCTELEM * data)
 {
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    jsimd_fdct_islow_mips_dspr2(data);
 }
 
 GLOBAL(void)
 jsimd_fdct_ifast (DCTELEM * data)
 {
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    jsimd_fdct_ifast_mips_dspr2(data);
 }
 
 GLOBAL(void)
@@ -458,12 +572,42 @@ jsimd_fdct_float (FAST_FLOAT * data)
 GLOBAL(int)
 jsimd_can_quantize (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (sizeof(DCTELEM) != 2)
+    return 0;
+
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    return 1;
+
   return 0;
 }
 
 GLOBAL(int)
 jsimd_can_quantize_float (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(ISLOW_MULT_TYPE) != 2)
+    return 0;
+
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    return 1;
+
   return 0;
 }
 
@@ -471,23 +615,106 @@ GLOBAL(void)
 jsimd_quantize (JCOEFPTR coef_block, DCTELEM * divisors,
                 DCTELEM * workspace)
 {
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    jsimd_quantize_mips_dspr2(coef_block, divisors, workspace);
 }
 
 GLOBAL(void)
 jsimd_quantize_float (JCOEFPTR coef_block, FAST_FLOAT * divisors,
                       FAST_FLOAT * workspace)
 {
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    jsimd_quantize_float_mips_dspr2(coef_block, divisors, workspace);
 }
 
 GLOBAL(int)
 jsimd_can_idct_2x2 (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(ISLOW_MULT_TYPE) != 2)
+    return 0;
+
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    return 1;
+
   return 0;
 }
 
 GLOBAL(int)
 jsimd_can_idct_4x4 (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(ISLOW_MULT_TYPE) != 2)
+    return 0;
+
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    return 1;
+
+  return 0;
+}
+
+GLOBAL(int)
+jsimd_can_idct_6x6 (void)
+{
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(ISLOW_MULT_TYPE) != 2)
+    return 0;
+
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    return 1;
+
+  return 0;
+}
+
+GLOBAL(int)
+jsimd_can_idct_12x12 (void)
+{
+  init_simd();
+
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(ISLOW_MULT_TYPE) != 2)
+    return 0;
+
+  if (simd_support & JSIMD_MIPS_DSPR2)
+    return 1;
+
   return 0;
 }
 
@@ -496,6 +723,9 @@ jsimd_idct_2x2 (j_decompress_ptr cinfo, jpeg_component_info * compptr,
                 JCOEFPTR coef_block, JSAMPARRAY output_buf,
                 JDIMENSION output_col)
 {
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    jsimd_idct_2x2_mips_dspr2(compptr->dct_table, coef_block,
+                              output_buf, output_col);
 }
 
 GLOBAL(void)
@@ -503,6 +733,49 @@ jsimd_idct_4x4 (j_decompress_ptr cinfo, jpeg_component_info * compptr,
                 JCOEFPTR coef_block, JSAMPARRAY output_buf,
                 JDIMENSION output_col)
 {
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+  {
+    int workspace[DCTSIZE*4];  /* buffers data between passes */
+    jsimd_idct_4x4_mips_dspr2(compptr->dct_table, coef_block,
+                              output_buf, output_col, workspace);
+  }
+}
+
+GLOBAL(void)
+jsimd_idct_6x6 (j_decompress_ptr cinfo, jpeg_component_info * compptr,
+           JCOEFPTR coef_block, JSAMPARRAY output_buf,
+           JDIMENSION output_col)
+{
+    if ((simd_support & JSIMD_MIPS_DSPR2))
+      jsimd_idct_6x6_mips_dspr2(compptr->dct_table, coef_block,
+                                output_buf, output_col);
+}
+
+GLOBAL(void)
+jsimd_idct_12x12 (j_decompress_ptr cinfo, jpeg_component_info * compptr,
+                  JCOEFPTR coef_block,
+                  JSAMPARRAY output_buf, JDIMENSION output_col)
+{
+  if (simd_support & JSIMD_MIPS_DSPR2) {
+    int workspace[96];
+    int output[12] = {
+      (int)(output_buf[0] + output_col),
+      (int)(output_buf[1] + output_col),
+      (int)(output_buf[2] + output_col),
+      (int)(output_buf[3] + output_col),
+      (int)(output_buf[4] + output_col),
+      (int)(output_buf[5] + output_col),
+      (int)(output_buf[6] + output_col),
+      (int)(output_buf[7] + output_col),
+      (int)(output_buf[8] + output_col),
+      (int)(output_buf[9] + output_col),
+      (int)(output_buf[10] + output_col),
+      (int)(output_buf[11] + output_col),
+    };
+    jsimd_idct_12x12_pass1_mips_dspr2(coef_block,
+                                      compptr->dct_table, workspace);
+    jsimd_idct_12x12_pass2_mips_dspr2(workspace, output);
+  }
 }
 
 GLOBAL(int)
@@ -514,6 +787,25 @@ jsimd_can_idct_islow (void)
 GLOBAL(int)
 jsimd_can_idct_ifast (void)
 {
+  init_simd();
+
+  /* The code is optimised for these values only */
+  if (DCTSIZE != 8)
+    return 0;
+  if (sizeof(JCOEF) != 2)
+    return 0;
+  if (BITS_IN_JSAMPLE != 8)
+    return 0;
+  if (sizeof(JDIMENSION) != 4)
+    return 0;
+  if (sizeof(IFAST_MULT_TYPE) != 2)
+    return 0;
+  if (IFAST_SCALE_BITS != 2)
+    return 0;
+
+  if ((simd_support & JSIMD_MIPS_DSPR2))
+    return 1;
+
   return 0;
 }
 
@@ -532,9 +824,29 @@ jsimd_idct_islow (j_decompress_ptr cinfo, jpeg_component_info * compptr,
 
 GLOBAL(void)
 jsimd_idct_ifast (j_decompress_ptr cinfo, jpeg_component_info * compptr,
-                JCOEFPTR coef_block, JSAMPARRAY output_buf,
-                JDIMENSION output_col)
+                  JCOEFPTR coef_block, JSAMPARRAY output_buf,
+                  JDIMENSION output_col)
 {
+  if (simd_support & JSIMD_MIPS_DSPR2) {
+    JCOEFPTR inptr;
+    IFAST_MULT_TYPE * quantptr;
+    DCTELEM workspace[DCTSIZE2];  /* buffers data between passes */
+
+    /* Pass 1: process columns from input, store into work array. */
+
+    inptr = coef_block;
+    quantptr = (IFAST_MULT_TYPE *) compptr->dct_table;
+
+    jsimd_idct_ifast_cols_mips_dspr2(inptr, quantptr,
+                                     workspace, mips_idct_ifast_coefs);
+
+    /* Pass 2: process rows from work array, store into output array. */
+    /* Note that we must descale the results by a factor of 8 == 2**3, */
+    /* and also undo the PASS1_BITS scaling. */
+
+    jsimd_idct_ifast_rows_mips_dspr2(workspace, output_buf,
+                                     output_col, mips_idct_ifast_coefs);
+  }
 }
 
 GLOBAL(void)

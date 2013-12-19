@@ -4,7 +4,7 @@
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1994-1996, Thomas G. Lane.
  * Modified 2002-2010 by Guido Vollbeding.
- * Modifications:
+ * libjpeg-turbo Modifications:
  * Copyright 2009 Pierre Ossman <ossman@cendio.se> for Cendio AB
  * Copyright (C) 2010, D. R. Commander.
  * For conditions of distribution and use, see the accompanying README file.
@@ -133,6 +133,11 @@ start_pass (j_decompress_ptr cinfo)
       method = JDCT_ISLOW;	/* jidctint uses islow-style table */
       break;
     case 6:
+#if defined(__mips__)
+      if (jsimd_can_idct_6x6())
+        method_ptr = jsimd_idct_6x6;
+      else
+#endif
       method_ptr = jpeg_idct_6x6;
       method = JDCT_ISLOW;	/* jidctint uses islow-style table */
       break;
@@ -188,6 +193,11 @@ start_pass (j_decompress_ptr cinfo)
       method = JDCT_ISLOW;	/* jidctint uses islow-style table */
       break;
     case 12:
+#if defined(__mips__)
+      if (jsimd_can_idct_12x12())
+        method_ptr = jsimd_idct_12x12;
+      else
+#endif
       method_ptr = jpeg_idct_12x12;
       method = JDCT_ISLOW;	/* jidctint uses islow-style table */
       break;

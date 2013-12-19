@@ -4,7 +4,7 @@
  * Copyright 2009 Pierre Ossman <ossman@cendio.se> for Cendio AB
  * Copyright 2011 D. R. Commander
  * Copyright (C) 2013, MIPS Technologies, Inc., California
- * 
+ *
  * Based on the x86 SIMD extension for IJG JPEG library,
  * Copyright (C) 1999-2006, MIYASAKA Masaru.
  * For conditions of distribution and use, see copyright notice in jsimdext.inc
@@ -417,6 +417,35 @@ EXTERN(void) jsimd_extxrgb_ycc_convert_mips_dspr2
              JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
              JDIMENSION output_row, int num_rows));
 
+EXTERN(void) jsimd_rgb_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+EXTERN(void) jsimd_extrgb_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+EXTERN(void) jsimd_extrgbx_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+EXTERN(void) jsimd_extbgr_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+EXTERN(void) jsimd_extbgrx_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+EXTERN(void) jsimd_extxbgr_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+EXTERN(void) jsimd_extxrgb_gray_convert_mips_dspr2
+        JPP((JDIMENSION img_width,
+             JSAMPARRAY input_buf, JSAMPIMAGE output_buf,
+             JDIMENSION output_row, int num_rows));
+
 EXTERN (void) jsimd_ycc_rgb_convert_mips_dspr2
         JPP((JDIMENSION img_width,
              JSAMPIMAGE input_buf, JDIMENSION input_row,
@@ -622,6 +651,10 @@ EXTERN(void) jsimd_convsamp_neon JPP((JSAMPARRAY sample_data,
                                       JDIMENSION start_col,
                                       DCTELEM * workspace));
 
+EXTERN(void) jsimd_convsamp_mips_dspr2 JPP((JSAMPARRAY sample_data,
+                                            JDIMENSION start_col,
+                                            DCTELEM * workspace));
+
 EXTERN(void) jsimd_convsamp_float_3dnow JPP((JSAMPARRAY sample_data,
                                              JDIMENSION start_col,
                                              FAST_FLOAT * workspace));
@@ -634,6 +667,10 @@ EXTERN(void) jsimd_convsamp_float_sse2 JPP((JSAMPARRAY sample_data,
                                             JDIMENSION start_col,
                                             FAST_FLOAT * workspace));
 
+EXTERN(void) jsimd_convsamp_float_mips_dspr2 JPP((JSAMPARRAY sample_data,
+                                                  JDIMENSION start_col,
+                                                  FAST_FLOAT * workspace));
+
 /* SIMD Forward DCT */
 EXTERN(void) jsimd_fdct_islow_mmx JPP((DCTELEM * data));
 EXTERN(void) jsimd_fdct_ifast_mmx JPP((DCTELEM * data));
@@ -644,6 +681,9 @@ extern const int jconst_fdct_islow_sse2[];
 EXTERN(void) jsimd_fdct_ifast_sse2 JPP((DCTELEM * data));
 
 EXTERN(void) jsimd_fdct_ifast_neon JPP((DCTELEM * data));
+
+EXTERN(void) jsimd_fdct_islow_mips_dspr2 JPP((DCTELEM * data));
+EXTERN(void) jsimd_fdct_ifast_mips_dspr2 JPP((DCTELEM * data));
 
 EXTERN(void) jsimd_fdct_float_3dnow JPP((FAST_FLOAT * data));
 
@@ -663,6 +703,10 @@ EXTERN(void) jsimd_quantize_neon JPP((JCOEFPTR coef_block,
                                       DCTELEM * divisors,
                                       DCTELEM * workspace));
 
+EXTERN(void) jsimd_quantize_mips_dspr2 JPP((JCOEFPTR coef_block,
+                                            DCTELEM * divisors,
+                                            DCTELEM * workspace));
+
 EXTERN(void) jsimd_quantize_float_3dnow JPP((JCOEFPTR coef_block,
                                              FAST_FLOAT * divisors,
                                              FAST_FLOAT * workspace));
@@ -674,6 +718,10 @@ EXTERN(void) jsimd_quantize_float_sse JPP((JCOEFPTR coef_block,
 EXTERN(void) jsimd_quantize_float_sse2 JPP((JCOEFPTR coef_block,
                                             FAST_FLOAT * divisors,
                                             FAST_FLOAT * workspace));
+
+EXTERN(void) jsimd_quantize_float_mips_dspr2 JPP((JCOEFPTR coef_block,
+                                                  FAST_FLOAT * divisors,
+                                                  FAST_FLOAT * workspace));
 
 /* SIMD Reduced Inverse DCT */
 EXTERN(void) jsimd_idct_2x2_mmx JPP((void * dct_table,
@@ -704,6 +752,25 @@ EXTERN(void) jsimd_idct_4x4_neon JPP((void * dct_table,
                                       JSAMPARRAY output_buf,
                                       JDIMENSION output_col));
 
+EXTERN(void) jsimd_idct_2x2_mips_dspr2 JPP((void * dct_table,
+                                            JCOEFPTR coef_block,
+                                            JSAMPARRAY output_buf,
+                                            JDIMENSION output_col));
+EXTERN(void) jsimd_idct_4x4_mips_dspr2 JPP((void * dct_table,
+                                            JCOEFPTR coef_block,
+                                            JSAMPARRAY output_buf,
+                                            JDIMENSION output_col,
+                                            int * workspace));
+EXTERN(void) jsimd_idct_6x6_mips_dspr2 JPP((void * dct_table,
+                                            JCOEFPTR coef_block,
+                                            JSAMPARRAY output_buf,
+                                            JDIMENSION output_col));
+EXTERN(void) jsimd_idct_12x12_pass1_mips_dspr2 JPP((JCOEFPTR coef_block,
+                                                    void * dct_table,
+                                                    int * workspace));
+EXTERN(void) jsimd_idct_12x12_pass2_mips_dspr2 JPP((int * workspace,
+                                                    int * output));
+
 /* SIMD Inverse DCT */
 EXTERN(void) jsimd_idct_islow_mmx JPP((void * dct_table,
                                        JCOEFPTR coef_block,
@@ -733,6 +800,15 @@ EXTERN(void) jsimd_idct_ifast_neon JPP((void * dct_table,
                                         JCOEFPTR coef_block,
                                         JSAMPARRAY output_buf,
                                         JDIMENSION output_col));
+
+EXTERN(void) jsimd_idct_ifast_cols_mips_dspr2 JPP((JCOEF * inptr,
+                                                   IFAST_MULT_TYPE * quantptr,
+                                                   DCTELEM * wsptr,
+                                                   const int * idct_coefs));
+EXTERN(void) jsimd_idct_ifast_rows_mips_dspr2 JPP((DCTELEM * wsptr,
+                                                   JSAMPARRAY output_buf,
+                                                   JDIMENSION output_col,
+                                                   const int * idct_coefs));
 
 EXTERN(void) jsimd_idct_float_3dnow JPP((void * dct_table,
                                          JCOEFPTR coef_block,

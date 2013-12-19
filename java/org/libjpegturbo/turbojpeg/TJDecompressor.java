@@ -117,7 +117,7 @@ public class TJDecompressor {
 
   /**
    * Returns the level of chrominance subsampling used in the JPEG image
-   * associated with this decompressor instance.
+   * associated with this decompressor instance.  See {@link TJ TJ.SAMP_*}.
    *
    * @return the level of chrominance subsampling used in the JPEG image
    * associated with this decompressor instance
@@ -128,6 +128,21 @@ public class TJDecompressor {
     if (jpegSubsamp >= TJ.NUMSAMP)
       throw new Exception("JPEG header information is invalid");
     return jpegSubsamp;
+  }
+
+  /**
+   * Returns the colorspace used in the JPEG image associated with this
+   * decompressor instance.  See {@link TJ TJ.CS_*}.
+   *
+   * @return the colorspace used in the JPEG image associated with this
+   * decompressor instance
+   */
+  public int getColorspace() throws Exception {
+    if (jpegColorspace < 0)
+      throw new Exception(NO_ASSOC_ERROR);
+    if (jpegColorspace >= TJ.NUMCS)
+      throw new Exception("JPEG header information is invalid");
+    return jpegColorspace;
   }
 
   /**
@@ -369,6 +384,10 @@ public class TJDecompressor {
    * that, if the width or height of the image is not an even multiple of the
    * MCU block size (see {@link TJ#getMCUWidth} and {@link TJ#getMCUHeight}),
    * then an intermediate buffer copy will be performed within TurboJPEG.
+   * <p>
+   * NOTE: Technically, the JPEG format uses the YCbCr colorspace, but per the
+   * convention of the digital video community, the TurboJPEG API uses "YUV" to
+   * refer to an image format consisting of Y, Cb, and Cr image planes.
    *
    * @param dstBuf buffer that will receive the YUV planar image.  Use
    * {@link TJ#bufSizeYUV} to determine the appropriate size for this buffer
@@ -687,5 +706,6 @@ public class TJDecompressor {
   protected int jpegWidth = 0;
   protected int jpegHeight = 0;
   protected int jpegSubsamp = -1;
+  protected int jpegColorspace = -1;
   private ByteOrder byteOrder = null;
 };

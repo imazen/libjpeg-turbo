@@ -87,7 +87,7 @@ typedef struct _tjinstance
 	int init;
 } tjinstance;
 
-static const int pixelsize[TJ_NUMSAMP]={3, 3, 3, 1, 3};
+static const int pixelsize[TJ_NUMSAMP]={3, 3, 3, 1, 3, 3};
 
 static const JXFORM_CODE xformtypes[TJ_NUMXOP]=
 {
@@ -187,6 +187,8 @@ static int setCompDefaults(struct jpeg_compress_struct *cinfo,
 			cinfo->in_color_space=JCS_RGB;  pixelFormat=TJPF_RGB;
 			break;
 		#endif
+		case TJPF_CMYK:
+			cinfo->in_color_space=JCS_CMYK;  break;
 	}
 
 	cinfo->input_components=tjPixelSize[pixelFormat];
@@ -199,15 +201,20 @@ static int setCompDefaults(struct jpeg_compress_struct *cinfo,
 	}
 	if(subsamp==TJSAMP_GRAY)
 		jpeg_set_colorspace(cinfo, JCS_GRAYSCALE);
-	else
-		jpeg_set_colorspace(cinfo, JCS_YCbCr);
+	else if(pixelFormat==TJPF_CMYK)
+		jpeg_set_colorspace(cinfo, JCS_YCCK);
+	else jpeg_set_colorspace(cinfo, JCS_YCbCr);
 
 	cinfo->comp_info[0].h_samp_factor=tjMCUWidth[subsamp]/8;
 	cinfo->comp_info[1].h_samp_factor=1;
 	cinfo->comp_info[2].h_samp_factor=1;
+	if(cinfo->num_components>3)
+		cinfo->comp_info[3].h_samp_factor=tjMCUWidth[subsamp]/8;
 	cinfo->comp_info[0].v_samp_factor=tjMCUHeight[subsamp]/8;
 	cinfo->comp_info[1].v_samp_factor=1;
 	cinfo->comp_info[2].v_samp_factor=1;
+	if(cinfo->num_components>3)
+		cinfo->comp_info[3].v_samp_factor=tjMCUHeight[subsamp]/8;
 
 	return retval;
 }
@@ -257,6 +264,8 @@ static int setDecompDefaults(struct jpeg_decompress_struct *dinfo,
 		case TJPF_ABGR:
 			dinfo->out_color_space=JCS_RGB;  break;
 		#endif
+		case TJPF_CMYK:
+			dinfo->out_color_space=JCS_CMYK;  break;
 		default:
 			_throw("Unsupported pixel format");
 	}
@@ -273,7 +282,10 @@ static int getSubsamp(j_decompress_ptr dinfo)
 	int retval=-1, i, k;
 	for(i=0; i<NUMSUBOPT; i++)
 	{
-		if(dinfo->num_components==pixelsize[i])
+		if(dinfo->num_components==pixelsize[i]
+			|| ((dinfo->jpeg_color_space==JCS_YCCK
+				|| dinfo->jpeg_color_space==JCS_CMYK)
+					&& pixelsize[i]==3 && dinfo->num_components==4))
 		{
 			if(dinfo->comp_info[0].h_samp_factor==tjMCUWidth[i]/8
 				&& dinfo->comp_info[0].v_samp_factor==tjMCUHeight[i]/8)
@@ -281,8 +293,13 @@ static int getSubsamp(j_decompress_ptr dinfo)
 				int match=0;
 				for(k=1; k<dinfo->num_components; k++)
 				{
-					if(dinfo->comp_info[k].h_samp_factor==1
-						&& dinfo->comp_info[k].v_samp_factor==1)
+					int href=1, vref=1;
+					if(dinfo->jpeg_color_space==JCS_YCCK && k==3)
+					{
+						href=tjMCUWidth[i]/8;  vref=tjMCUHeight[i]/8;
+					}
+					if(dinfo->comp_info[k].h_samp_factor==href
+						&& dinfo->comp_info[k].v_samp_factor==vref)
 						match++;
 				}
 				if(match==dinfo->num_components-1)
@@ -694,14 +711,15 @@ DLLEXPORT int DLLCALL tjEncodeYUV3(tjhandle handle, unsigned char *srcBuf,
 	#endif
 
 	getinstance(handle);
-	if((this->init&COMPRESS)==0)
-		_throw("tjEncodeYUV3(): Instance has not been initialized for compression");
 
 	for(i=0; i<MAX_COMPONENTS; i++)
 	{
 		tmpbuf[i]=NULL;  _tmpbuf[i]=NULL;
 		tmpbuf2[i]=NULL;  _tmpbuf2[i]=NULL;  outbuf[i]=NULL;
 	}
+
+	if((this->init&COMPRESS)==0)
+		_throw("tjEncodeYUV3(): Instance has not been initialized for compression");
 
 	if(srcBuf==NULL || width<=0 || pitch<0 || height<=0 || pixelFormat<0
 		|| pixelFormat>=TJ_NUMPF || dstBuf==NULL || pad<0 || !isPow2(pad)
@@ -714,6 +732,9 @@ DLLEXPORT int DLLCALL tjEncodeYUV3(tjhandle handle, unsigned char *srcBuf,
 		retval=-1;
 		goto bailout;
 	}
+
+	if(pixelFormat==TJPF_CMYK)
+		_throw("tjEncodeYUV3(): Cannot generate YUV images from CMYK pixels");
 
 	if(pitch==0) pitch=width*tjPixelSize[pixelFormat];
 
@@ -841,6 +862,134 @@ DLLEXPORT int DLLCALL tjEncodeYUV(tjhandle handle, unsigned char *srcBuf,
 }
 
 
+DLLEXPORT int DLLCALL tjCompressFromYUV(tjhandle handle, unsigned char *srcBuf,
+	int width, int pad, int height, int subsamp, unsigned char **jpegBuf,
+	unsigned long *jpegSize, int jpegQual, int flags)
+{
+	int i, row, retval=0, alloc=1;  JSAMPROW *inbuf[MAX_COMPONENTS];
+	int cw[MAX_COMPONENTS], ch[MAX_COMPONENTS], iw[MAX_COMPONENTS],
+		tmpbufsize=0, usetmpbuf=0, th[MAX_COMPONENTS];
+	JSAMPLE *_tmpbuf=NULL, *ptr=srcBuf;  JSAMPROW *tmpbuf[MAX_COMPONENTS];
+
+	getinstance(handle)
+
+	for(i=0; i<MAX_COMPONENTS; i++)
+	{
+		tmpbuf[i]=NULL;  inbuf[i]=NULL;
+	}
+
+	if((this->init&COMPRESS)==0)
+		_throw("tjCompressFromYUV(): Instance has not been initialized for compression");
+
+	if(srcBuf==NULL || width<=0 || pad<1 || height<=0 || subsamp<0
+		|| subsamp>=NUMSUBOPT || jpegBuf==NULL || jpegSize==NULL || jpegQual<0
+		|| jpegQual>100)
+		_throw("tjCompressFromYUV(): Invalid argument");
+
+	if(setjmp(this->jerr.setjmp_buffer))
+	{
+		/* If we get here, the JPEG code has signaled an error. */
+		retval=-1;
+		goto bailout;
+	}
+
+	cinfo->image_width=width;
+	cinfo->image_height=height;
+
+	if(flags&TJFLAG_FORCEMMX) putenv("JSIMD_FORCEMMX=1");
+	else if(flags&TJFLAG_FORCESSE) putenv("JSIMD_FORCESSE=1");
+	else if(flags&TJFLAG_FORCESSE2) putenv("JSIMD_FORCESSE2=1");
+
+	if(flags&TJFLAG_NOREALLOC)
+	{
+		alloc=0;  *jpegSize=tjBufSize(width, height, subsamp);
+	}
+	jpeg_mem_dest_tj(cinfo, jpegBuf, jpegSize, alloc);
+	if(setCompDefaults(cinfo, TJPF_RGB, subsamp, jpegQual, flags)==-1)
+		return -1;
+	cinfo->raw_data_in=TRUE;
+
+	jpeg_start_compress(cinfo, TRUE);
+	for(i=0; i<cinfo->num_components; i++)
+	{
+		jpeg_component_info *compptr=&cinfo->comp_info[i];
+		int ih;
+		iw[i]=compptr->width_in_blocks*DCTSIZE;
+		ih=compptr->height_in_blocks*DCTSIZE;
+		cw[i]=PAD(cinfo->image_width, cinfo->max_h_samp_factor)
+			*compptr->h_samp_factor/cinfo->max_h_samp_factor;
+		ch[i]=PAD(cinfo->image_height, cinfo->max_v_samp_factor)
+			*compptr->v_samp_factor/cinfo->max_v_samp_factor;
+		if(iw[i]!=cw[i] || ih!=ch[i]) usetmpbuf=1;
+		th[i]=compptr->v_samp_factor*DCTSIZE;
+		tmpbufsize+=iw[i]*th[i];
+		if((inbuf[i]=(JSAMPROW *)malloc(sizeof(JSAMPROW)*ch[i]))==NULL)
+			_throw("tjCompressFromYUV(): Memory allocation failure");
+		for(row=0; row<ch[i]; row++)
+		{
+			inbuf[i][row]=ptr;
+			ptr+=PAD(cw[i], pad);
+		}
+	}
+	if(usetmpbuf)
+	{
+		if((_tmpbuf=(JSAMPLE *)malloc(sizeof(JSAMPLE)*tmpbufsize))==NULL)
+			_throw("tjCompressFromYUV(): Memory allocation failure");
+		ptr=_tmpbuf;
+		for(i=0; i<cinfo->num_components; i++)
+		{
+			if((tmpbuf[i]=(JSAMPROW *)malloc(sizeof(JSAMPROW)*th[i]))==NULL)
+				_throw("tjCompressFromYUV(): Memory allocation failure");
+			for(row=0; row<th[i]; row++)
+			{
+				tmpbuf[i][row]=ptr;
+				ptr+=iw[i];
+			}
+		}
+	}
+
+	for(row=0; row<(int)cinfo->image_height;
+		row+=cinfo->max_v_samp_factor*DCTSIZE)
+	{
+		JSAMPARRAY yuvptr[MAX_COMPONENTS];
+		int crow[MAX_COMPONENTS];
+		for(i=0; i<cinfo->num_components; i++)
+		{
+			jpeg_component_info *compptr=&cinfo->comp_info[i];
+			crow[i]=row*compptr->v_samp_factor/cinfo->max_v_samp_factor;
+			if(usetmpbuf)
+			{
+				int j, k;
+				for(j=0; j<min(th[i], ch[i]-crow[i]); j++)
+				{
+					memcpy(tmpbuf[i][j], inbuf[i][crow[i]+j], cw[i]);
+					// Duplicate last sample in row to fill out MCU
+					for(k=cw[i]; k<iw[i]; k++) tmpbuf[i][j][k]=tmpbuf[i][j][cw[i]-1];
+				}
+				// Duplicate last row to fill out MCU
+				for(j=ch[i]-crow[i]; j<th[i]; j++)
+					memcpy(tmpbuf[i][j], tmpbuf[i][ch[i]-crow[i]-1], iw[i]);
+				yuvptr[i]=tmpbuf[i];
+			}
+			else
+				yuvptr[i]=&inbuf[i][crow[i]];
+		}
+		jpeg_write_raw_data(cinfo, yuvptr, cinfo->max_v_samp_factor*DCTSIZE);
+	}
+	jpeg_finish_compress(cinfo);
+
+	bailout:
+	if(cinfo->global_state>CSTATE_START) jpeg_abort_compress(cinfo);
+	for(i=0; i<MAX_COMPONENTS; i++)
+	{
+		if(tmpbuf[i]) free(tmpbuf[i]);
+		if(inbuf[i]) free(inbuf[i]);
+	}
+	if(_tmpbuf) free(_tmpbuf);
+	return retval;
+}
+
+
 /* Decompressor */
 
 static tjhandle _tjInitDecompress(tjinstance *this)
@@ -880,19 +1029,19 @@ DLLEXPORT tjhandle DLLCALL tjInitDecompress(void)
 }
 
 
-DLLEXPORT int DLLCALL tjDecompressHeader2(tjhandle handle,
+DLLEXPORT int DLLCALL tjDecompressHeader3(tjhandle handle,
 	unsigned char *jpegBuf, unsigned long jpegSize, int *width, int *height,
-	int *jpegSubsamp)
+	int *jpegSubsamp, int *jpegColorspace)
 {
 	int retval=0;
 
 	getinstance(handle);
 	if((this->init&DECOMPRESS)==0)
-		_throw("tjDecompressHeader2(): Instance has not been initialized for decompression");
+		_throw("tjDecompressHeader3(): Instance has not been initialized for decompression");
 
 	if(jpegBuf==NULL || jpegSize<=0 || width==NULL || height==NULL
-		|| jpegSubsamp==NULL)
-		_throw("tjDecompressHeader2(): Invalid argument");
+		|| jpegSubsamp==NULL || jpegColorspace==NULL)
+		_throw("tjDecompressHeader3(): Invalid argument");
 
 	if(setjmp(this->jerr.setjmp_buffer))
 	{
@@ -906,16 +1055,36 @@ DLLEXPORT int DLLCALL tjDecompressHeader2(tjhandle handle,
 	*width=dinfo->image_width;
 	*height=dinfo->image_height;
 	*jpegSubsamp=getSubsamp(dinfo);
+	switch(dinfo->jpeg_color_space)
+	{
+		case JCS_GRAYSCALE:  *jpegColorspace=TJCS_GRAY;  break;
+		case JCS_RGB:        *jpegColorspace=TJCS_RGB;  break;
+		case JCS_YCbCr:      *jpegColorspace=TJCS_YCbCr;  break;
+		case JCS_CMYK:       *jpegColorspace=TJCS_CMYK;  break;
+		case JCS_YCCK:       *jpegColorspace=TJCS_YCCK;  break;
+		default:             *jpegColorspace=-1;  break;
+	}
 
 	jpeg_abort_decompress(dinfo);
 
 	if(*jpegSubsamp<0)
-		_throw("tjDecompressHeader2(): Could not determine subsampling type for JPEG image");
+		_throw("tjDecompressHeader3(): Could not determine subsampling type for JPEG image");
+	if(*jpegColorspace<0)
+		_throw("tjDecompressHeader3(): Could not determine colorspace of JPEG image");
 	if(*width<1 || *height<1)
-		_throw("tjDecompressHeader2(): Invalid data returned in header");
+		_throw("tjDecompressHeader3(): Invalid data returned in header");
 
 	bailout:
 	return retval;
+}
+
+DLLEXPORT int DLLCALL tjDecompressHeader2(tjhandle handle,
+	unsigned char *jpegBuf, unsigned long jpegSize, int *width, int *height,
+	int *jpegSubsamp)
+{
+	int jpegColorspace;
+	return tjDecompressHeader3(handle, jpegBuf, jpegSize, width, height,
+		jpegSubsamp, &jpegColorspace);
 }
 
 DLLEXPORT int DLLCALL tjDecompressHeader(tjhandle handle,
@@ -1066,13 +1235,14 @@ DLLEXPORT int DLLCALL tjDecompressToYUV2(tjhandle handle,
 	int dctsize;
 
 	getinstance(handle);
-	if((this->init&DECOMPRESS)==0)
-		_throw("tjDecompressToYUV2(): Instance has not been initialized for decompression");
 
 	for(i=0; i<MAX_COMPONENTS; i++)
 	{
 		tmpbuf[i]=NULL;  outbuf[i]=NULL;
 	}
+
+	if((this->init&DECOMPRESS)==0)
+		_throw("tjDecompressToYUV2(): Instance has not been initialized for decompression");
 
 	if(jpegBuf==NULL || jpegSize<=0 || dstBuf==NULL || width<0 || pad<1
 		|| !isPow2(pad) || height<0)
@@ -1093,7 +1263,7 @@ DLLEXPORT int DLLCALL tjDecompressToYUV2(tjhandle handle,
 	jpeg_read_header(dinfo, TRUE);
 	jpegSubsamp=getSubsamp(dinfo);
 	if(jpegSubsamp<0)
-		_throw("tjTransform(): Could not determine subsampling type for JPEG image");
+		_throw("tjDecompressToYUV2(): Could not determine subsampling type for JPEG image");
 
 	jpegwidth=dinfo->image_width;  jpegheight=dinfo->image_height;
 	if(width==0) width=jpegwidth;
@@ -1107,6 +1277,9 @@ DLLEXPORT int DLLCALL tjDecompressToYUV2(tjhandle handle,
 	}
 	if(scaledw>width || scaledh>height)
 		_throw("tjDecompressToYUV2(): Could not scale down to desired image dimensions");
+	if(dinfo->num_components>3)
+		_throw("tjDecompressToYUV2(): JPEG image must have 3 or fewer components");
+
 	width=scaledw;  height=scaledh;
 	dinfo->scale_num=sf[i].num;
 	dinfo->scale_denom=sf[i].denom;

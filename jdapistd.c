@@ -3,7 +3,7 @@
  *
  * This file was part of the Independent JPEG Group's software:
  * Copyright (C) 1994-1996, Thomas G. Lane.
- * Modifications:
+ * libjpeg-turbo Modifications:
  * Copyright (C) 2010, D. R. Commander.
  * Copyright (C) 2012-2013, MulticoreWare Inc.
  * For conditions of distribution and use, see the accompanying README file.

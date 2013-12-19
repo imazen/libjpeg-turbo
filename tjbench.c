@@ -1,5 +1,5 @@
 /*
- * Copyright (C)2009-2012 D. R. Commander.  All Rights Reserved.
+ * Copyright (C)2009-2013 D. R. Commander.  All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include <errno.h>
 #include <cdjpeg.h>
@@ -44,9 +45,9 @@
 #define _throwtj(m) _throw(m, tjGetErrorStr())
 #define _throwbmp(m) _throw(m, bmpgeterr())
 
-enum {YUVENCODE=1, YUVDECODE};
-int flags=TJFLAG_NOREALLOC, decomponly=0, yuv=0, quiet=0, dotile=0,
-	pf=TJPF_BGR;
+enum {YUVENCODE=1, YUVDECODE, YUVCOMPRESS};
+int flags=TJFLAG_NOREALLOC, componly=0, decomponly=0, yuv=0, quiet=0, dotile=0,
+	pf=TJPF_BGR, yuvpad=1;
 char *ext="ppm";
 const char *pixFormatStr[TJ_NUMPF]=
 {
@@ -54,13 +55,29 @@ const char *pixFormatStr[TJ_NUMPF]=
 };
 const char *subNameLong[TJ_NUMSAMP]=
 {
-	"4:4:4", "4:2:2", "4:2:0", "GRAY", "4:4:0"
+	"4:4:4", "4:2:2", "4:2:0", "GRAY", "4:4:0", "4:1:1"
 };
-const char *subName[NUMSUBOPT]={"444", "422", "420", "GRAY", "440"};
+const char *csName[TJ_NUMCS]=
+{
+	"RGB", "YCbCr", "GRAY", "CMYK", "YCCK"
+};
+const char *subName[TJ_NUMSAMP]={"444", "422", "420", "GRAY", "440", "411"};
 tjscalingfactor *scalingfactors=NULL, sf={1, 1};  int nsf=0;
 int xformop=TJXOP_NONE, xformopt=0;
 int (*customFilter)(short *, tjregion, tjregion, int, int, tjtransform *);
 double benchtime=5.0;
+
+
+char *formatName(int subsamp, int cs, char *buf)
+{
+	if(cs==TJCS_YCbCr) return (char *)subNameLong[subsamp];
+	else if(cs==TJCS_YCCK)
+	{
+		snprintf(buf, 80, "%s %s", csName[cs], subNameLong[subsamp]);
+		return buf;
+	}
+	else return (char *)csName[cs];
+}
 
 
 char *sigfig(double val, int figs, char *buf, int len)
@@ -94,9 +111,9 @@ int decomptest(unsigned char *srcbuf, unsigned char **jpegbuf,
 	int row, col, i, dstbufalloc=0, retval=0;
 	double start, elapsed;
 	int ps=tjPixelSize[pf];
-	int yuvsize=tjBufSizeYUV(w, h, subsamp), bufsize;
-	int scaledw=(yuv==YUVDECODE)? w : TJSCALED(w, sf);
-	int scaledh=(yuv==YUVDECODE)? h : TJSCALED(h, sf);
+	int scaledw=TJSCALED(w, sf);
+	int scaledh=TJSCALED(h, sf);
+	int yuvsize=tjBufSizeYUV2(scaledw, yuvpad, scaledh, subsamp), bufsize;
 	int pitch=scaledw*ps;
 	int ntilesw=(w+tilew-1)/tilew, ntilesh=(h+tileh-1)/tileh;
 	unsigned char *dstptr, *dstptr2;
@@ -124,8 +141,9 @@ int decomptest(unsigned char *srcbuf, unsigned char **jpegbuf,
 	/* Execute once to preload cache */
 	if(yuv==YUVDECODE)
 	{
-		if(tjDecompressToYUV(handle, jpegbuf[0], jpegsize[0], dstbuf, flags)==-1)
-			_throwtj("executing tjDecompressToYUV()");
+		if(tjDecompressToYUV2(handle, jpegbuf[0], jpegsize[0], dstbuf, scaledw,
+			yuvpad, scaledh, flags)==-1)
+			_throwtj("executing tjDecompressToYUV2()");
 	}
 	else if(tjDecompress2(handle, jpegbuf[0], jpegsize[0], dstbuf, scaledw,
 		pitch, scaledh, pf, flags)==-1)
@@ -137,8 +155,9 @@ int decomptest(unsigned char *srcbuf, unsigned char **jpegbuf,
 		int tile=0;
 		if(yuv==YUVDECODE)
 		{
-			if(tjDecompressToYUV(handle, jpegbuf[0], jpegsize[0], dstbuf, flags)==-1)
-			_throwtj("executing tjDecompressToYUV()");
+			if(tjDecompressToYUV2(handle, jpegbuf[0], jpegsize[0], dstbuf, scaledw,
+				yuvpad, scaledh, flags)==-1)
+				_throwtj("executing tjDecompressToYUV2()");
 		}
 		else for(row=0, dstptr=dstbuf; row<ntilesh; row++, dstptr+=pitch*tileh)
 		{
@@ -167,10 +186,19 @@ int decomptest(unsigned char *srcbuf, unsigned char **jpegbuf,
 		printf("     Dest. throughput:     %f Megapixels/sec\n",
 			(double)(w*h)/1000000.*(double)i/elapsed);
 	}
+	if(sf.num!=1 || sf.denom!=1)
+		snprintf(sizestr, 20, "%d_%d", sf.num, sf.denom);
+	else if(tilew!=w || tileh!=h)
+		snprintf(sizestr, 20, "%dx%d", tilew, tileh);
+	else snprintf(sizestr, 20, "full");
+	if(decomponly)
+		snprintf(tempstr, 1024, "%s_%s.%s", filename, sizestr, ext);
+	else
+		snprintf(tempstr, 1024, "%s_%s%s_%s.%s", filename, subName[subsamp],
+			qualstr, sizestr, ext);
+
 	if(yuv==YUVDECODE)
 	{
-		snprintf(tempstr, 1024, "%s_%s%s.yuv", filename, subName[subsamp],
-			qualstr);
 		if((file=fopen(tempstr, "wb"))==NULL)
 			_throwunix("opening YUV image for output");
 		if(fwrite(dstbuf, yuvsize, 1, file)!=1)
@@ -179,16 +207,6 @@ int decomptest(unsigned char *srcbuf, unsigned char **jpegbuf,
 	}
 	else
 	{
-		if(sf.num!=1 || sf.denom!=1)
-			snprintf(sizestr, 20, "%d_%d", sf.num, sf.denom);
-		else if(tilew!=w || tileh!=h)
-			snprintf(sizestr, 20, "%dx%d", tilew, tileh);
-		else snprintf(sizestr, 20, "full");
-		if(decomponly)
-			snprintf(tempstr, 1024, "%s_%s.%s", filename, sizestr, ext);
-		else
-			snprintf(tempstr, 1024, "%s_%s%s_%s.%s", filename, subName[subsamp],
-				qualstr, sizestr, ext);
 		if(savebmp(tempstr, dstbuf, scaledw, scaledh, pf,
 			(flags&TJFLAG_BOTTOMUP)!=0)==-1)
 			_throwbmp("saving bitmap");
@@ -323,7 +341,9 @@ void dotest(unsigned char *srcbuf, int w, int h, int subsamp, int jpegqual,
 	double start, elapsed;
 	int totaljpegsize=0, row, col, i, tilew=w, tileh=h, retval=0;
 	unsigned long *jpegsize=NULL;
-	int ps=tjPixelSize[pf], ntilesw=1, ntilesh=1, pitch=w*ps;
+	int ps=(yuv==YUVCOMPRESS)? 3:tjPixelSize[pf];
+	int ntilesw=1, ntilesh=1, pitch=w*ps;
+	const char *pfStr=(yuv==YUVCOMPRESS)? "YUV":pixFormatStr[pf];
 
 	if(yuv==YUVENCODE) {dotestyuv(srcbuf, w, h, subsamp, filename);  return;}
 
@@ -331,7 +351,7 @@ void dotest(unsigned char *srcbuf, int w, int h, int subsamp, int jpegqual,
 		_throwunix("allocating temporary image buffer");
 
 	if(!quiet)
-		printf(">>>>>  %s (%s) <--> JPEG %s Q%d  <<<<<\n", pixFormatStr[pf],
+		printf(">>>>>  %s (%s) <--> JPEG %s Q%d  <<<<<\n", pfStr,
 			(flags&TJFLAG_BOTTOMUP)? "Bottom-up":"Top-down", subNameLong[subsamp],
 			jpegqual);
 
@@ -359,17 +379,27 @@ void dotest(unsigned char *srcbuf, int w, int h, int subsamp, int jpegqual,
 
 		/* Compression test */
 		if(quiet==1)
-			printf("%s\t%s\t%s\t%d\t", pixFormatStr[pf],
-				(flags&TJFLAG_BOTTOMUP)? "BU":"TD", subNameLong[subsamp], jpegqual);
-		for(i=0; i<h; i++)
-			memcpy(&tmpbuf[pitch*i], &srcbuf[w*ps*i], w*ps);
+			printf("%s\t%s\t%s\t%d\t", pfStr, (flags&TJFLAG_BOTTOMUP)? "BU":"TD",
+				subNameLong[subsamp], jpegqual);
+		if(yuv!=YUVCOMPRESS)
+			for(i=0; i<h; i++)
+				memcpy(&tmpbuf[pitch*i], &srcbuf[w*ps*i], w*ps);
 		if((handle=tjInitCompress())==NULL)
 			_throwtj("executing tjInitCompress()");
 
 		/* Execute once to preload cache */
-		if(tjCompress2(handle, srcbuf, tilew, pitch, tileh, pf, &jpegbuf[0],
-			&jpegsize[0], subsamp, jpegqual, flags)==-1)
-			_throwtj("executing tjCompress2()");
+		if(yuv==YUVCOMPRESS)
+		{
+			if(tjCompressFromYUV(handle, srcbuf, tilew, yuvpad, tileh, subsamp,
+				&jpegbuf[0], &jpegsize[0], jpegqual, flags)==-1)
+				_throwtj("executing tjCompressFromYUV()");
+		}
+		else
+		{
+			if(tjCompress2(handle, srcbuf, tilew, pitch, tileh, pf, &jpegbuf[0],
+				&jpegsize[0], subsamp, jpegqual, flags)==-1)
+				_throwtj("executing tjCompress2()");
+		}
 
 		/* Benchmark */
 		for(i=0, start=gettime(); (elapsed=gettime()-start)<benchtime; i++)
@@ -383,9 +413,18 @@ void dotest(unsigned char *srcbuf, int w, int h, int subsamp, int jpegqual,
 				{
 					int width=min(tilew, w-col*tilew);
 					int height=min(tileh, h-row*tileh);
-					if(tjCompress2(handle, srcptr2, width, pitch, height, pf,
-						&jpegbuf[tile], &jpegsize[tile], subsamp, jpegqual, flags)==-1)
-						_throwtj("executing tjCompress()2");
+					if(yuv==YUVCOMPRESS)
+					{
+						if(tjCompressFromYUV(handle, srcptr2, width, yuvpad, height,
+							subsamp, &jpegbuf[tile], &jpegsize[tile], jpegqual, flags)==-1)
+							_throwtj("executing tjCompressFromYUV()");
+					}
+					else
+					{
+						if(tjCompress2(handle, srcptr2, width, pitch, height, pf,
+							&jpegbuf[tile], &jpegsize[tile], subsamp, jpegqual, flags)==-1)
+							_throwtj("executing tjCompress2()");
+					}
 					totaljpegsize+=jpegsize[tile];
 				}
 			}
@@ -429,9 +468,12 @@ void dotest(unsigned char *srcbuf, int w, int h, int subsamp, int jpegqual,
 		}
 
 		/* Decompression test */
-		if(decomptest(srcbuf, jpegbuf, jpegsize, tmpbuf, w, h, subsamp, jpegqual,
-			filename, tilew, tileh)==-1)
-			goto bailout;
+		if(!componly)
+		{
+			if(decomptest(srcbuf, jpegbuf, jpegsize, tmpbuf, w, h, subsamp, jpegqual,
+				filename, tilew, tileh)==-1)
+				goto bailout;
+		}
 
 		for(i=0; i<ntilesw*ntilesh; i++)
 		{
@@ -466,7 +508,7 @@ void dodecomptest(char *filename)
 	unsigned char **jpegbuf=NULL, *srcbuf=NULL;
 	unsigned long *jpegsize=NULL, srcsize, totaljpegsize;
 	tjtransform *t=NULL;
-	int w=0, h=0, subsamp=-1, _w, _h, _tilew, _tileh,
+	int w=0, h=0, subsamp=-1, cs=-1, _w, _h, _tilew, _tileh,
 		_ntilesw, _ntilesh, _subsamp;
 	char *temp=NULL, tempstr[80], tempstr2[80];
 	int row, col, i, tilew, tileh, ntilesw=1, ntilesh=1, retval=0;
@@ -475,7 +517,7 @@ void dodecomptest(char *filename)
 
 	if((file=fopen(filename, "rb"))==NULL)
 		_throwunix("opening file");
-	if(fseek(file, 0, SEEK_END)<0 || (srcsize=ftell(file))<0)
+	if(fseek(file, 0, SEEK_END)<0 || (srcsize=ftell(file))==(unsigned long)-1)
 		_throwunix("determining file size");
 	if((srcbuf=(unsigned char *)malloc(srcsize))==NULL)
 		_throwunix("allocating memory");
@@ -490,20 +532,25 @@ void dodecomptest(char *filename)
 
 	if((handle=tjInitTransform())==NULL)
 		_throwtj("executing tjInitTransform()");
-	if(tjDecompressHeader2(handle, srcbuf, srcsize, &w, &h, &subsamp)==-1)
-		_throwtj("executing tjDecompressHeader2()");
+	if(tjDecompressHeader3(handle, srcbuf, srcsize, &w, &h, &subsamp, &cs)==-1)
+		_throwtj("executing tjDecompressHeader3()");
 
 	if(quiet==1)
 	{
 		printf("All performance values in Mpixels/sec\n\n");
-		printf("Bitmap\tBitmap\tJPEG\t%s %s \tXform\tComp\tDecomp\n",
+		printf("Bitmap\tBitmap\tJPEG\tJPEG\t%s %s \tXform\tComp\tDecomp\n",
 			dotile? "Tile ":"Image", dotile? "Tile ":"Image");
-		printf("Format\tOrder\tSubsamp\tWidth Height\tPerf \tRatio\tPerf\n\n");
+		printf("Format\tOrder\tCS\tSubsamp\tWidth Height\tPerf \tRatio\tPerf\n\n");
 	}
 	else if(!quiet)
 	{
-		printf(">>>>>  JPEG %s --> %s (%s)  <<<<<\n", subNameLong[subsamp],
-			pixFormatStr[pf], (flags&TJFLAG_BOTTOMUP)? "Bottom-up":"Top-down");
+		if(yuv==YUVDECODE)
+			printf(">>>>>  JPEG %s --> YUV  <<<<<\n",
+				formatName(subsamp, cs, tempstr));
+		else
+			printf(">>>>>  JPEG %s --> %s (%s)  <<<<<\n",
+				formatName(subsamp, cs, tempstr), pixFormatStr[pf],
+				(flags&TJFLAG_BOTTOMUP)? "Bottom-up":"Top-down");
 	}
 
 	for(tilew=dotile? 16:w, tileh=dotile? 16:h; ; tilew*=2, tileh*=2)
@@ -539,8 +586,8 @@ void dodecomptest(char *filename)
 		}
 		else if(quiet==1)
 		{
-			printf("%s\t%s\t%s\t", pixFormatStr[pf],
-				(flags&TJFLAG_BOTTOMUP)? "BU":"TD", subNameLong[subsamp]);
+			printf("%s\t%s\t%s\t%s\t", pixFormatStr[pf],
+				(flags&TJFLAG_BOTTOMUP)? "BU":"TD", csName[cs], subNameLong[subsamp]);
 			printf("%-4d  %-4d\t", tilew, tileh);
 		}
 
@@ -667,7 +714,7 @@ void usage(char *progname)
 {
 	int i;
 	printf("USAGE: %s\n", progname);
-	printf("       <Inputfile (BMP|PPM)> <Quality> [options]\n\n");
+	printf("       <Inputfile (BMP|PPM|YUV)> <Quality> [options]\n\n");
 	printf("       %s\n", progname);
 	printf("       <Inputfile (JPG)> [options]\n\n");
 	printf("Options:\n\n");
@@ -676,8 +723,6 @@ void usage(char *progname)
 	printf("-bottomup = Test bottom-up compression/decompression\n");
 	printf("-tile = Test performance of the codec when the image is encoded as separate\n");
 	printf("     tiles of varying sizes.\n");
-	printf("-forcemmx, -forcesse, -forcesse2, -forcesse3 =\n");
-	printf("     Force MMX, SSE, SSE2, or SSE3 code paths in the underlying codec\n");
 	printf("-rgb, -bgr, -rgbx, -bgrx, -xbgr, -xrgb =\n");
 	printf("     Test the specified color conversion path in the codec (default: BGR)\n");
 	printf("-fastupsample = Use the fastest chrominance upsampling algorithm available in\n");
@@ -686,9 +731,21 @@ void usage(char *progname)
 	printf("     codec\n");
 	printf("-accuratedct = Use the most accurate DCT/IDCT algorithms available in the\n");
 	printf("     underlying codec\n");
+	printf("-subsamp <s> = if compressing a JPEG image from a YUV planar source image,\n");
+	printf("     this specifies the level of chrominance subsampling used in the source\n");
+	printf("     image.  Otherwise, this specifies the level of chrominance subsampling\n");
+	printf("     to use in the JPEG destination image.  <s> = 444, 422, 440, 420, 411,\n");
+	printf("     or GRAY\n");
 	printf("-quiet = Output results in tabular rather than verbose format\n");
 	printf("-yuvencode = Encode RGB input as planar YUV rather than compressing as JPEG\n");
 	printf("-yuvdecode = Decode JPEG image to planar YUV rather than RGB\n");
+	printf("-yuvsize WxH = if compressing a JPEG image from a YUV planar source image, this\n");
+	printf("     specifies the width and height of the source image.\n");
+	printf("-yuvpad <p> = if compressing a JPEG image from a YUV planar source image, this\n");
+	printf("     specifies the number of bytes to which each row of each plane in the\n");
+	printf("     source image is padded.  If decompressing a JPEG image to a YUV planar\n");
+	printf("     destination image, this specifies the row padding for each plane of the\n");
+	printf("     destination image. (default=1)\n");
 	printf("-scale M/N = scale down the width/height of the decompressed JPEG image by a\n");
 	printf("     factor of M/N (M/N = ");
 	for(i=0; i<nsf; i++)
@@ -708,7 +765,8 @@ void usage(char *progname)
 	printf("     decompression (these options are mutually exclusive)\n");
 	printf("-grayscale = Perform lossless grayscale conversion prior to decompression\n");
 	printf("     test (can be combined with the other transforms above)\n");
-	printf("-benchtime <t> = Run each benchmark for at least <t> seconds (default = 5.0)\n\n");
+	printf("-benchtime <t> = Run each benchmark for at least <t> seconds (default = 5.0)\n");
+	printf("-componly = Stop after running compression tests.  Do not test decompression.\n\n");
 	printf("NOTE:  If the quality is specified as a range (e.g. 90-100), a separate\n");
 	printf("test will be performed for all quality values in the range.\n\n");
 	exit(1);
@@ -717,9 +775,9 @@ void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	unsigned char *srcbuf=NULL;  int w, h, i, j;
+	unsigned char *srcbuf=NULL;  int w=0, h=0, i, j;
 	int minqual=-1, maxqual=-1;  char *temp;
-	int minarg=2;  int retval=0;
+	int minarg=2, retval=0, subsamp=-1;
 
 	if((scalingfactors=tjGetScalingFactors(&nsf))==NULL || nsf==0)
 		_throwtj("executing tjGetScalingFactors()");
@@ -731,6 +789,7 @@ int main(int argc, char *argv[])
 	{
 		if(!strcasecmp(temp, ".bmp")) ext="bmp";
 		if(!strcasecmp(temp, ".jpg") || !strcasecmp(temp, ".jpeg")) decomponly=1;
+		if(!strcasecmp(temp, ".yuv")) yuv=YUVCOMPRESS;
 	}
 
 	printf("\n");
@@ -774,26 +833,6 @@ int main(int argc, char *argv[])
 			if(!strcasecmp(argv[i], "-tile"))
 			{
 				dotile=1;  xformopt|=TJXOPT_CROP;
-			}
-			if(!strcasecmp(argv[i], "-forcesse3"))
-			{
-				printf("Forcing SSE3 code\n\n");
-				flags|=TJFLAG_FORCESSE3;
-			}
-			if(!strcasecmp(argv[i], "-forcesse2"))
-			{
-				printf("Forcing SSE2 code\n\n");
-				flags|=TJFLAG_FORCESSE2;
-			}
-			if(!strcasecmp(argv[i], "-forcesse"))
-			{
-				printf("Forcing SSE code\n\n");
-				flags|=TJFLAG_FORCESSE;
-			}
-			if(!strcasecmp(argv[i], "-forcemmx"))
-			{
-				printf("Forcing MMX code\n\n");
-				flags|=TJFLAG_FORCEMMX;
 			}
 			if(!strcasecmp(argv[i], "-fastupsample"))
 			{
@@ -856,8 +895,43 @@ int main(int argc, char *argv[])
 			if(!strcmp(argv[i], "-?")) usage(argv[0]);
 			if(!strcasecmp(argv[i], "-alloc")) flags&=(~TJFLAG_NOREALLOC);
 			if(!strcasecmp(argv[i], "-bmp")) ext="bmp";
+			if(!strcasecmp(argv[i], "-yuvsize") && i<argc-1)
+			{
+				int temp1=0, temp2=0;
+				if(sscanf(argv[++i], "%dx%d", &temp1, &temp2)==2 && temp1>=1
+					&& temp2>=1)
+				{
+					w=temp1;  h=temp2;
+				}
+				else usage(argv[0]);
+			}
+			if(!strcasecmp(argv[i], "-yuvpad") && i<argc-1)
+			{
+				int temp=atoi(argv[++i]);
+				if(temp>=1) yuvpad=temp;
+			}
+			if(!strcasecmp(argv[i], "-subsamp") && i<argc-1)
+			{
+				i++;
+				if(toupper(argv[i][0])=='G') subsamp=TJSAMP_GRAY;
+				else
+				{
+					int temp=atoi(argv[i]);
+					switch(temp)
+					{
+						case 444:  subsamp=TJSAMP_444;  break;
+						case 422:  subsamp=TJSAMP_422;  break;
+						case 440:  subsamp=TJSAMP_440;  break;
+						case 420:  subsamp=TJSAMP_420;  break;
+						case 411:  subsamp=TJSAMP_411;  break;
+					}
+				}
+			}
+			if(!strcasecmp(argv[i], "-componly")) componly=1;
 		}
 	}
+
+	if(yuv) ext="yuv";
 
 	if((sf.num!=1 || sf.denom!=1) && dotile)
 	{
@@ -869,14 +943,38 @@ int main(int argc, char *argv[])
 	if(yuv && dotile)
 	{
 		printf("Disabling tiled compression/decompression tests, because those tests do not\n");
-		printf("work when YUV encoding or decoding is enabled.\n\n");
+		printf("work when YUV encoding, compression, or decoding is enabled.\n\n");
 		dotile=0;
 	}
 
 	if(!decomponly)
 	{
-		if(loadbmp(argv[1], &srcbuf, &w, &h, pf, (flags&TJFLAG_BOTTOMUP)!=0)==-1)
-			_throwbmp("loading bitmap");
+		if(yuv==YUVCOMPRESS)
+		{
+			FILE *file=NULL;  unsigned long srcsize;
+			if(w<1 || h<1 || subsamp<0 || subsamp>=TJ_NUMSAMP)
+				_throw("opening YUV image file",
+					"YUV image size and/or subsampling not specified");
+			if((file=fopen(argv[1], "rb"))==NULL)
+				_throwunix("opening YUV image file");
+			if(fseek(file, 0, SEEK_END)<0 ||
+				(srcsize=ftell(file))==(unsigned long)-1)
+				_throwunix("determining YUV image file size");
+			if(srcsize!=tjBufSizeYUV2(w, yuvpad, h, subsamp))
+				_throw("opening YUV image file", "YUV image file is the wrong size");
+			if((srcbuf=(unsigned char *)malloc(srcsize))==NULL)
+				_throwunix("allocating memory for YUV image");
+			if(fseek(file, 0, SEEK_SET)<0)
+				_throwunix("setting YUV image file position");
+			if(fread(srcbuf, srcsize, 1, file)<1)
+				_throwunix("reading YUV data");
+			fclose(file);  file=NULL;
+		}
+		else
+		{
+			if(loadbmp(argv[1], &srcbuf, &w, &h, pf, (flags&TJFLAG_BOTTOMUP)!=0)==-1)
+				_throwbmp("loading bitmap");
+		}
 		temp=strrchr(argv[1], '.');
 		if(temp!=NULL) *temp='\0';
 	}
@@ -895,18 +993,27 @@ int main(int argc, char *argv[])
 		printf("\n");
 		goto bailout;
 	}
-	for(i=maxqual; i>=minqual; i--)
-		dotest(srcbuf, w, h, TJ_GRAYSCALE, i, argv[1]);
-	printf("\n");
-	for(i=maxqual; i>=minqual; i--)
-		dotest(srcbuf, w, h, TJ_420, i, argv[1]);
-	printf("\n");
-	for(i=maxqual; i>=minqual; i--)
-		dotest(srcbuf, w, h, TJ_422, i, argv[1]);
-	printf("\n");
-	for(i=maxqual; i>=minqual; i--)
-		dotest(srcbuf, w, h, TJ_444, i, argv[1]);
-	printf("\n");
+	if(yuv==YUVCOMPRESS || (subsamp>=0 && subsamp<TJ_NUMSAMP))
+	{
+		for(i=maxqual; i>=minqual; i--)
+			dotest(srcbuf, w, h, subsamp, i, argv[1]);
+		printf("\n");
+	}
+	else
+	{
+		for(i=maxqual; i>=minqual; i--)
+			dotest(srcbuf, w, h, TJSAMP_GRAY, i, argv[1]);
+		printf("\n");
+		for(i=maxqual; i>=minqual; i--)
+			dotest(srcbuf, w, h, TJSAMP_420, i, argv[1]);
+		printf("\n");
+		for(i=maxqual; i>=minqual; i--)
+			dotest(srcbuf, w, h, TJSAMP_422, i, argv[1]);
+		printf("\n");
+		for(i=maxqual; i>=minqual; i--)
+			dotest(srcbuf, w, h, TJSAMP_444, i, argv[1]);
+		printf("\n");
+	}
 
 	bailout:
 	if(srcbuf) free(srcbuf);
