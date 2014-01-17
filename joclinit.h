@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2012-2013, MulticoreWare Inc.
  * In July 2012, Written by Peixuan Zhang <zhangpeixuan.cn@gmail.com>
+ * Copyright (C) 2014, D. R. Commander.
  * Based on the OpenCL extension for IJG JPEG library,
  * For conditions of distribution and use, see the accompanying README file.
  *
@@ -284,7 +285,11 @@ void             jocl_cl_set_output_format         (void *jocl_openClinfo);
  */
 
 #define CL_DEBUG_NOTE(...)                                               \
-  //printf(__VA_ARGS__)
+  {                                                                      \
+    char *env = getenv("JOCL_DEBUG");                                    \
+    if (env && !strcmp(env, "1"))                                        \
+      printf(__VA_ARGS__);                                               \
+  }
 
 #define CL_SAFE_CALL0(func, action)                                      \
   func;                                                                  \
