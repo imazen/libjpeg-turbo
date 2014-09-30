@@ -52,7 +52,7 @@ install:
         $xml += "<test name=`"$name`" type=`"`" method=`"`" result=`"$res`" time=`"$time`">`n<output>$output</output>`n</test>`n"};
       $xml += $foot;
       $xml > ".\xunit_tmp.xml";
-      Push-Artifact xunit_tmp.xml;
+      Push-AppveyorArtifact xunit_tmp.xml;
       $wc.UploadFile("https://ci.appveyor.com/api/testresults/xunit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\xunit_tmp.xml)); }
   
   
