@@ -1,0 +1,110 @@
+shallow_clone: true
+
+
+
+environment:
+  matrix:
+    - build_platform: "x86"
+      build_compiler: "msvc"
+    
+    - build_platform: "x64"
+      build_compiler: "msvc"
+    
+    - build_platform: "x86"
+      build_compiler: "mingw"
+    
+    - build_platform: "x64"
+      build_compiler: "mingw"
+
+
+
+install:
+  - ps: $nl = "`r`n"
+  - ps: $wc = New-Object 'System.Net.WebClient'
+  - ps: if($env:build_platform -eq 'x64') {$env:vc_arg = 'x86_amd64'}
+        else {$env:vc_arg = 'x86'}
+  
+  # functions
+  - ps: function print-file($txt) {
+      Get-Content $txt | ForEach-Object { echo "$_"  }}
+  
+  - ps: function invoke($exe, $al, $output=0) {
+      echo "$nl> INVOKE $exe $al <$nl$nl";
+      if($al) {Measure-Command {$process = (start-process $exe $al -Wait -NoNewWindow -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt);}}
+      else {Measure-Command {$process = (start-process $exe -Wait -NoNewWindow -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt);}}
+      if($output) {
+      echo "stdout:"; print-file 'C:\out.txt';
+      echo "stderr:"; print-file 'C:\err.txt'; }
+      return $process.ExitCode; }
+  
+  - ps: function Push-Ctest-Results($dir, $prefix='') {
+      $head = "<?xml version=`"1.0`" encoding=`"utf-8`"?>`n<assembly name=`"`" run-date=`"1970-01-01`" run-time=`"00:00:00`" configFile=`"`" time=`"0`" total=`"0`" passed=`"0`" failed=`"0`" skipped=`"0`" environment=`"`">`n<class time=`"0`" name=`"`" total=`"0`" passed=`"0`" failed=`"0`" skipped=`"0`">`n";
+      $foot = "</class>`n</assembly>`n";
+      $out = Select-String '(?s)\d+\/\d+ Testing.*?end time.*?[-]+' -input ((Get-Content $dir\Testing\Temporary\LastTest*.log) -join "`n") -AllMatches;
+      $xml = $head;
+      $num = 0;
+      Select-String '(\w+)\s+(\d+)\s+([\d\.]{5})' -input (Get-Content $dir\Testing\Temporary\CTestCostData.txt)-AllMatches | % {$_.Matches} | % {
+        $name = $prefix + $_.Groups[1].Value;
+        $res = @{$true="Pass";$false="Fail"}[$_.Groups[2].Value -eq 1];
+        $time = $_.Groups[3].Value;
+        $output = [Security.SecurityElement]::Escape($out.Matches[$num].Value);
+        $num++;
+        $xml += "<test name=`"$name`" type=`"`" method=`"`" result=`"$res`" time=`"$time`">`n<output>$output</output>`n</test>`n"};
+      $xml += $foot;
+      $xml > ".\xunit_tmp.xml";
+      $wc.UploadFile("https://ci.appveyor.com/api/testresults/xunit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path .\xunit_tmp.xml)); }
+  
+  
+  # get nasm
+  - cinst nasm
+  - ps: $env:path="C:\Program Files (x86)\nasm;$($env:path)"
+  
+  # get mingw-w64 (C:\mingw64)
+  - ps: if($env:build_compiler -eq 'mingw' -and $env:build_platform -eq 'x64') {
+      invoke 'curl' '-L -o mw64.7z "http://mingw.blob.core.windows.net/x86-64-491-release-posix-seh-rt-v3-rev1/mw64.7z"';
+      invoke '7z' 'x -oC:\ mw64.7z'; }
+  
+  # sh is breaking mingw builds; remove
+  - for %%i in (sh.exe) do @del "%%~$PATH:i"
+
+
+
+
+build_script:
+  
+  # set env
+  
+  - '"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall" %vc_arg%'
+  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x86] SET PATH=C:\MinGW\bin;%PATH%
+  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
+  
+  
+  
+  # build msvc
+  
+  - if [%build_compiler%]==[msvc] (
+      (if [%build_platform%]==[x86]
+        (cmake -G "Visual Studio 12")
+      else if [%build_platform%]==[x64]
+        (cmake -G "Visual Studio 12 Win64")) &&
+      msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
+      7z a libjpeg-msvc12-%build_platform%.zip .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll &&
+      7z a turbojpeg-msvc12-%build_platform%.zip .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
+      appveyor push-artifact libjpeg-msvc12-%build_platform%.zip &&
+      appveyor push-artifact turbojpeg-msvc12-%build_platform%.zip )
+  
+  
+  # build mingw
+  
+  - if [%build_compiler%]==[mingw] (
+      cmake -G "MinGW Makefiles" -DCMAKE_SHARED_LINKER_FLAGS=-static &&
+      mingw32-make &&
+      7z a libjpeg-mingw-%build_platform%.zip libjpeg.a .\sharedlib\libjpeg.dll.a .\sharedlib\libjpeg-62.dll &&
+      7z a turbojpeg-mingw-%build_platform%.zip libturbojpeg.a libturbojpeg.dll.a libturbojpeg.dll &&
+      appveyor push-artifact libjpeg-mingw-%build_platform%.zip &&
+      appveyor push-artifact turbojpeg-mingw-%build_platform%.zip )
+
+
+test_script:
+  - ctest -C Release
+  - ps: Push-Ctest-Results '.'
