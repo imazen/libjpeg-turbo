@@ -90,8 +90,8 @@ build_script:
       msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
       7z a libjpeg-msvc12-%build_platform%.zip .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll &&
       7z a turbojpeg-msvc12-%build_platform%.zip .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
-      appveyor push-artifact libjpeg-msvc12-%build_platform%.zip &&
-      appveyor push-artifact turbojpeg-msvc12-%build_platform%.zip )
+      appveyor PushArtifact libjpeg-msvc12-%build_platform%.zip &&
+      appveyor PushArtifact turbojpeg-msvc12-%build_platform%.zip )
   
   
   # build mingw
@@ -101,8 +101,8 @@ build_script:
       mingw32-make &&
       7z a libjpeg-mingw-%build_platform%.zip libjpeg.a .\sharedlib\libjpeg.dll.a .\sharedlib\libjpeg-62.dll &&
       7z a turbojpeg-mingw-%build_platform%.zip libturbojpeg.a libturbojpeg.dll.a libturbojpeg.dll &&
-      appveyor push-artifact libjpeg-mingw-%build_platform%.zip &&
-      appveyor push-artifact turbojpeg-mingw-%build_platform%.zip )
+      appveyor PushArtifact libjpeg-mingw-%build_platform%.zip &&
+      appveyor PushArtifact turbojpeg-mingw-%build_platform%.zip )
 
 
 test_script:
