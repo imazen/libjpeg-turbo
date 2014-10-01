@@ -21,8 +21,13 @@ environment:
 install:
   - ps: $nl = "`r`n"
   - ps: $wc = New-Object 'System.Net.WebClient'
-  - ps: if($env:build_platform -eq 'x64') {$env:vc_arg = 'x86_amd64'}
-        else {$env:vc_arg = 'x86'}
+  
+  - ps: if($env:build_platform -eq 'x64') {
+          $env:vc_arg = 'x86_amd64';
+          $env:cm_arg = 'Visual Studio 12 Win64';}
+        else {
+          $env:vc_arg = 'x86';
+          $env:cm_arg = 'Visual Studio 12';}
   
   # functions
   - ps: function print-file($txt) {
@@ -81,14 +86,10 @@ build_script:
   - if [%build_compiler%]==[mingw] if [%build_platform%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
   
   
-  
   # build msvc
   
   - if [%build_compiler%]==[msvc] (
-      (if [%build_platform%]==[x86]
-        (cmake -G "Visual Studio 12")
-      else if [%build_platform%]==[x64]
-        (cmake -G "Visual Studio 12 Win64")) &&
+      cmake -G "%cm_arg%" -DCMAKE_C_FLAGS=/MT &&
       msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
       7z a libjpeg-msvc12-%build_platform%.zip .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll &&
       7z a turbojpeg-msvc12-%build_platform%.zip .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
