@@ -89,7 +89,7 @@ build_script:
   # build msvc
   
   - if [%build_compiler%]==[msvc] (
-      cmake -G "%cm_arg%" -DCMAKE_C_FLAGS=/MT &&
+      cmake -G "%cm_arg%" -DCMAKE_C_FLAGS_RELEASE=/MT &&
       msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
       7z a libjpeg-msvc12-%build_platform%.zip .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll &&
       7z a turbojpeg-msvc12-%build_platform%.zip .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
