@@ -135,7 +135,7 @@ build_script:
   
   - '"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall" %vcvar_arg%'
   
-  - SET zip=libpng-msvc12-%build_platform%.zip
+  - SET zip=libjpeg-msvc12-%build_platform%.zip
   - SET zip2=turbojpeg-msvc12-%build_platform%.zip
   - SET cmake_cmd=cmake -G "%vc_cm_arg%"
   - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_vcargs%
@@ -148,7 +148,7 @@ build_script:
       appveyor PushArtifact %zip% &&
       appveyor PushArtifact %zip2% )
   
-  - ps: if(Test-Path $env:zip) { zip2nuget $env:zip "libpng-$($env:build_compiler)-$($env:build_platform)" }
+  - ps: if(Test-Path $env:zip) { zip2nuget $env:zip "libjpeg-$($env:build_compiler)-$($env:build_platform)" }
   
   
   
@@ -157,7 +157,7 @@ build_script:
   - if [%build_compiler%]==[mingw] if [%build_platform%]==[x86] SET PATH=C:\MinGW\bin;%PATH%
   - if [%build_compiler%]==[mingw] if [%build_platform%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
   
-  - SET zip=libpng-mingw-%build_platform%.zip
+  - SET zip=libjpeg-mingw-%build_platform%.zip
   - SET zip2=turbojpeg-mingw-%build_platform%.zip
   - SET cmake_cmd=cmake -G "MinGW Makefiles"
   - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_gcargs%
@@ -170,7 +170,7 @@ build_script:
       appveyor PushArtifact %zip% &&
       appveyor PushArtifact %zip2% )
   
-  - ps: if(Test-Path $env:zip) { zip2nuget $env:zip "libpng-$($env:build_compiler)-$($env:build_platform)" }
+  - ps: if(Test-Path $env:zip) { zip2nuget $env:zip "libjpeg-$($env:build_compiler)-$($env:build_platform)" }
 
 
 
