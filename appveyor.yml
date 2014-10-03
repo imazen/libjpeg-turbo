@@ -178,7 +178,6 @@ test_script:
   - SET fail=0
   - ctest -C Release || SET fail=1 & ver > nul
   - ps: Push-Ctest-Results '.'
-  - ps: Push-AppveyorArtifact xunit_tmp.xml
   - ps: Push-AppveyorArtifact Testing\Temporary\LastTest.log
   - exit %fail%
 
