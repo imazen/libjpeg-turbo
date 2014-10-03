@@ -3,6 +3,15 @@ shallow_clone: true
 
 
 environment:
+  # settings
+  static_runtime: 1
+  
+  static_gcargs: -DCMAKE_SHARED_LINKER_FLAGS=-static
+  static_vcargs:
+  #static_vcargs: -DCMAKE_C_FLAGS_RELEASE=/MT
+  # ^ don't.
+  
+  
   matrix:
     - build_platform: "x86"
       build_compiler: "msvc"
@@ -21,26 +30,60 @@ environment:
 install:
   - ps: $nl = "`r`n"
   - ps: $wc = New-Object 'System.Net.WebClient'
-  
   - ps: if($env:build_platform -eq 'x64') {
-          $env:vc_arg = 'x86_amd64';
-          $env:cm_arg = 'Visual Studio 12 Win64';}
+          $env:vcvar_arg = 'x86_amd64';
+          $env:vc_cm_arg = 'Visual Studio 12 Win64';
+        }
         else {
-          $env:vc_arg = 'x86';
-          $env:cm_arg = 'Visual Studio 12';}
+          $env:vcvar_arg = 'x86';
+          $env:vc_cm_arg = 'Visual Studio 12';
+        }
+  
   
   # functions
-  - ps: function print-file($txt) {
-      Get-Content $txt | ForEach-Object { echo "$_"  }}
   
-  - ps: function invoke($exe, $al, $output=0) {
-      echo "$nl> INVOKE $exe $al <$nl$nl";
-      if($al) {Measure-Command {$process = (start-process $exe $al -Wait -NoNewWindow -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt);}}
-      else {Measure-Command {$process = (start-process $exe -Wait -NoNewWindow -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt);}}
-      if($output) {
-      echo "stdout:"; print-file 'C:\out.txt';
-      echo "stderr:"; print-file 'C:\err.txt'; }
-      return $process.ExitCode; }
+  - ps: function zip2nuget($file, $id) {
+          $tmp = 'C:\nutmp';
+          $here = get-location;
+          
+          if(Test-Path $tmp) {
+            Remove-Item $tmp -Force -Recurse;
+          }
+          
+          iex "7z x -o$tmp $file";
+          cd $tmp;
+          iex "nuget spec $id";
+          (Get-Content "$id.nuspec") -join "`n" -replace "(?s)<licenseUrl>.*</dependencies>", "<description>$id</description>" | Out-File "$id.nuspec";
+          iex "nuget pack $id.nuspec -version $($env:APPVEYOR_BUILD_VERSION)";
+          copy "*.nupkg" $here;
+          cd $here;
+        }
+  
+  - ps: function Print-File($txt) {
+          Get-Content $txt | ForEach-Object {
+            echo "$_"
+          }
+        }
+  
+  - ps: function Invoke($exe, $al, $output=0) {
+          echo "$nl> INVOKE $exe $al <$nl$nl";
+          if($al) {
+            Measure-Command {
+              $process = (start-process $exe $al -Wait -NoNewWindow -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt);
+            }
+          }
+          else {
+            Measure-Command {
+              $process = (start-process $exe -Wait -NoNewWindow -RedirectStandardOutput C:\out.txt -RedirectStandardError C:\err.txt);
+            }
+          }
+          
+          if($output) {
+            echo "stdout:"; print-file 'C:\out.txt';
+            echo "stderr:"; print-file 'C:\err.txt';
+          }
+          return $process.ExitCode;
+        }
   
   # warning: ugly
   - ps: function Push-Ctest-Results($dir, $prefix='') {
@@ -77,7 +120,7 @@ install:
   
   # get mingw-w64 (C:\mingw64)
   - ps: if($env:build_compiler -eq 'mingw' -and $env:build_platform -eq 'x64') {
-      invoke 'curl' '-L -o mw64.7z "http://mingw.blob.core.windows.net/x86-64-491-release-posix-seh-rt-v3-rev1/mw64.7z"';
+      invoke 'curl' '-L -o mw64.7z "http://libgd.blob.core.windows.net/mingw/x86_64-4.9.1-release-posix-seh-rt_v3-rev1.7z"';
       invoke '7z' 'x -oC:\ mw64.7z'; }
   
   # sh is breaking mingw builds; remove
@@ -88,33 +131,47 @@ install:
 
 build_script:
   
-  # set env
-  
-  - '"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall" %vc_arg%'
-  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x86] SET PATH=C:\MinGW\bin;%PATH%
-  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
-  
-  
   # build msvc
   
+  - '"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall" %vcvar_arg%'
+  
+  - SET zip=libpng-msvc12-%build_platform%.zip
+  - SET zip2=turbojpeg-msvc12-%build_platform%.zip
+  - SET cmake_cmd=cmake -G "%vc_cm_arg%"
+  - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_vcargs%
+  
   - if [%build_compiler%]==[msvc] (
-      cmake -G "%cm_arg%" -DCMAKE_C_FLAGS_RELEASE=/MT &&
+      %cmake_cmd% &&
       msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
-      7z a libjpeg-msvc12-%build_platform%.zip .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll &&
-      7z a turbojpeg-msvc12-%build_platform%.zip .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
-      appveyor PushArtifact libjpeg-msvc12-%build_platform%.zip &&
-      appveyor PushArtifact turbojpeg-msvc12-%build_platform%.zip )
+      7z a %zip% .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll &&
+      7z a %zip2% .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
+      appveyor PushArtifact %zip% &&
+      appveyor PushArtifact %zip2% )
+  
+  - ps: if(Test-Path $env:zip) { zip2nuget $env:zip "libpng-$($env:build_compiler)-$($env:build_platform)" }
+  
   
   
   # build mingw
   
+  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x86] SET PATH=C:\MinGW\bin;%PATH%
+  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
+  
+  - SET zip=libpng-mingw-%build_platform%.zip
+  - SET zip2=turbojpeg-mingw-%build_platform%.zip
+  - SET cmake_cmd=cmake -G "MinGW Makefiles"
+  - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_gcargs%
+  
   - if [%build_compiler%]==[mingw] (
-      cmake -G "MinGW Makefiles" -DCMAKE_SHARED_LINKER_FLAGS=-static &&
+      %cmake_cmd% &&
       mingw32-make &&
-      7z a libjpeg-mingw-%build_platform%.zip libjpeg.a .\sharedlib\libjpeg.dll.a .\sharedlib\libjpeg-62.dll &&
-      7z a turbojpeg-mingw-%build_platform%.zip libturbojpeg.a libturbojpeg.dll.a libturbojpeg.dll &&
-      appveyor PushArtifact libjpeg-mingw-%build_platform%.zip &&
-      appveyor PushArtifact turbojpeg-mingw-%build_platform%.zip )
+      7z a %zip% libjpeg.a .\sharedlib\libjpeg.dll.a .\sharedlib\libjpeg-62.dll &&
+      7z a %zip2% libturbojpeg.a libturbojpeg.dll.a libturbojpeg.dll &&
+      appveyor PushArtifact %zip% &&
+      appveyor PushArtifact %zip2% )
+  
+  - ps: if(Test-Path $env:zip) { zip2nuget $env:zip "libpng-$($env:build_compiler)-$($env:build_platform)" }
+
 
 
 test_script:
@@ -124,3 +181,6 @@ test_script:
   - ps: Push-AppveyorArtifact xunit_tmp.xml
   - ps: Push-AppveyorArtifact Testing\Temporary\LastTest.log
   - exit %fail%
+
+on_success:
+  - ps: Push-AppveyorArtifact *.nupkg
