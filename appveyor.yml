@@ -71,8 +71,8 @@ build_script:
   - if [%build_compiler%]==[msvc] (
       %cmake_cmd% &&
       msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
-      7z a %zip% .\release\jpeg-static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll jpeglib.h jconfig.h jerror.h jmorecfg.h &&
-      7z a %zip2% .\release\turbojpeg-static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
+      7z a %zip% .\release\jpeg_static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll jpeglib.h jconfig.h jerror.h jmorecfg.h &&
+      7z a %zip2% .\release\turbojpeg_static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
       appveyor PushArtifact %zip% &&
       appveyor PushArtifact %zip2% )
   

@@ -220,12 +220,12 @@ endif()
 
 add_subdirectory(sharedlib)
 
-add_library(jpeg-static STATIC ${JPEG_SOURCES} ${SIMD_OBJS})
+add_library(jpeg_static STATIC ${JPEG_SOURCES} ${SIMD_OBJS})
 if(NOT MSVC)
-  set_target_properties(jpeg-static PROPERTIES OUTPUT_NAME jpeg)
+  set_target_properties(jpeg_static PROPERTIES OUTPUT_NAME jpeg)
 endif()
 if(WITH_SIMD)
-  add_dependencies(jpeg-static simd)
+  add_dependencies(jpeg_static simd)
 endif()
 
 if(WITH_TURBOJPEG)
@@ -240,34 +240,34 @@ if(WITH_TURBOJPEG)
   if(MINGW)
     set_target_properties(turbojpeg PROPERTIES LINK_FLAGS -Wl,--kill-at)
   endif()
-  target_link_libraries(turbojpeg jpeg-static)
+  target_link_libraries(turbojpeg jpeg_static)
   set_target_properties(turbojpeg PROPERTIES LINK_INTERFACE_LIBRARIES "")
 
-  add_library(turbojpeg-static STATIC ${JPEG_SOURCES} ${SIMD_OBJS}
+  add_library(turbojpeg_static STATIC ${JPEG_SOURCES} ${SIMD_OBJS}
     turbojpeg.c transupp.c jdatadst-tj.c jdatasrc-tj.c)
   if(NOT MSVC)
-    set_target_properties(turbojpeg-static PROPERTIES OUTPUT_NAME turbojpeg)
+    set_target_properties(turbojpeg_static PROPERTIES OUTPUT_NAME turbojpeg)
   endif()
   if(WITH_SIMD)
-    add_dependencies(turbojpeg-static simd)
+    add_dependencies(turbojpeg_static simd)
   endif()
 
   add_executable(tjunittest tjunittest.c tjutil.c)
   target_link_libraries(tjunittest turbojpeg)
 
-  add_executable(tjunittest-static tjunittest.c tjutil.c)
-  target_link_libraries(tjunittest-static turbojpeg-static)
+  add_executable(tjunittest_static tjunittest.c tjutil.c)
+  target_link_libraries(tjunittest_static turbojpeg_static)
 
   add_executable(tjbench tjbench.c bmp.c tjutil.c rdbmp.c rdppm.c wrbmp.c
     wrppm.c)
-  target_link_libraries(tjbench turbojpeg jpeg-static)
+  target_link_libraries(tjbench turbojpeg jpeg_static)
   set_property(TARGET tjbench PROPERTY COMPILE_FLAGS
     "-DBMP_SUPPORTED -DPPM_SUPPORTED")
 
-  add_executable(tjbench-static tjbench.c bmp.c tjutil.c rdbmp.c rdppm.c wrbmp.c
+  add_executable(tjbench_static tjbench.c bmp.c tjutil.c rdbmp.c rdppm.c wrbmp.c
     wrppm.c)
-  target_link_libraries(tjbench-static turbojpeg-static jpeg-static)
-  set_property(TARGET tjbench-static PROPERTY COMPILE_FLAGS
+  target_link_libraries(tjbench_static turbojpeg_static jpeg_static)
+  set_property(TARGET tjbench_static PROPERTY COMPILE_FLAGS
     "-DBMP_SUPPORTED -DPPM_SUPPORTED")
 endif()
 
@@ -279,19 +279,19 @@ else()
 	set(DJPEG_BMP_SOURCES wrbmp.c wrtarga.c)
 endif()
 
-add_executable(cjpeg-static cjpeg.c cdjpeg.c rdgif.c rdppm.c rdswitch.c
+add_executable(cjpeg_static cjpeg.c cdjpeg.c rdgif.c rdppm.c rdswitch.c
   ${CJPEG_BMP_SOURCES})
-set_property(TARGET cjpeg-static PROPERTY COMPILE_FLAGS ${COMPILE_FLAGS})
-target_link_libraries(cjpeg-static jpeg-static)
+set_property(TARGET cjpeg_static PROPERTY COMPILE_FLAGS ${COMPILE_FLAGS})
+target_link_libraries(cjpeg_static jpeg_static)
 
-add_executable(djpeg-static djpeg.c cdjpeg.c rdcolmap.c rdswitch.c wrgif.c
+add_executable(djpeg_static djpeg.c cdjpeg.c rdcolmap.c rdswitch.c wrgif.c
   wrppm.c ${DJPEG_BMP_SOURCES})
-set_property(TARGET djpeg-static PROPERTY COMPILE_FLAGS ${COMPILE_FLAGS})
-target_link_libraries(djpeg-static jpeg-static)
+set_property(TARGET djpeg_static PROPERTY COMPILE_FLAGS ${COMPILE_FLAGS})
+target_link_libraries(djpeg_static jpeg_static)
 
-add_executable(jpegtran-static jpegtran.c cdjpeg.c rdswitch.c transupp.c)
-target_link_libraries(jpegtran-static jpeg-static)
-set_property(TARGET jpegtran-static PROPERTY COMPILE_FLAGS "-DUSE_SETMODE")
+add_executable(jpegtran_static jpegtran.c cdjpeg.c rdswitch.c transupp.c)
+target_link_libraries(jpegtran_static jpeg_static)
+set_property(TARGET jpegtran_static PROPERTY COMPILE_FLAGS "-DUSE_SETMODE")
 
 add_executable(rdjpgcom rdjpgcom.c)
 
@@ -422,7 +422,7 @@ foreach(libtype shared static)
     set(dir sharedlib/)
   else()
     set(dir "")
-    set(suffix -static)
+    set(suffix _static)
   endif()
   if(WITH_TURBOJPEG)
     add_test(tjunittest${suffix} tjunittest${suffix})
@@ -785,14 +785,14 @@ if(WITH_JAVA)
 endif()
 add_custom_target(installer
   makensis -nocd ${INST_DEFS} libjpeg-turbo.nsi
-  DEPENDS jpeg jpeg-static turbojpeg turbojpeg-static rdjpgcom wrjpgcom
+  DEPENDS jpeg jpeg_static turbojpeg turbojpeg_static rdjpgcom wrjpgcom
     cjpeg djpeg jpegtran tjbench ${JAVA_DEPEND}
   SOURCES libjpeg-turbo.nsi)
 
 if(WITH_TURBOJPEG)
-  set(TURBOJPEG_TARGETS turbojpeg turbojpeg-static tjbench)
+  set(TURBOJPEG_TARGETS turbojpeg turbojpeg_static tjbench)
 endif()
-install(TARGETS jpeg-static rdjpgcom wrjpgcom ${TURBOJPEG_TARGETS}
+install(TARGETS jpeg_static rdjpgcom wrjpgcom ${TURBOJPEG_TARGETS}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
