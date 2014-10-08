@@ -1,3 +1,4 @@
+version: 1.3.43.{build}
 shallow_clone: true
 
 
@@ -59,8 +60,8 @@ install:
 
 build_script:
   
-  - ps: $nupkg_b = "zlib-$($env:build_compiler)-$($env:build_platform)-$($env:APPVEYOR_REPO_BRANCH)";
-  - ps: $nupkg_c = "zlib-$($env:build_compiler)-$($env:build_platform)-$($env:APPVEYOR_REPO_COMMIT)";
+  - ps: $nupkg_b = "libjpeg-$($env:build_compiler)-$($env:build_platform)-$($env:APPVEYOR_REPO_BRANCH)";
+  - ps: $nupkg_c = "libjpeg-$($env:build_compiler)-$($env:build_platform)-$($env:APPVEYOR_REPO_COMMIT)";
   
   # build msvc
   
