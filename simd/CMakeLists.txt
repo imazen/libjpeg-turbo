@@ -14,7 +14,12 @@ if(WIN32)
   endif()
   set(NAFLAGS ${NAFLAGS} -I${CMAKE_SOURCE_DIR}/win/ -I${CMAKE_CURRENT_SOURCE_DIR}/)
 else()
-  set(NAFLAGS ${NAFLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/)
+  if(SIMD_X86_64)
+    set(NAFLAGS -felf64 -D__x86_64__)
+  else()
+    set(NAFLAGS -felf -D__x86_64__)
+  endif()
+  set(NAFLAGS ${NAFLAGS} -I${CMAKE_SOURCE_DIR}/win/ -I${CMAKE_CURRENT_SOURCE_DIR}/)
 endif()
 
 # This only works if building from the command line.  There is currently no way
