@@ -2,7 +2,7 @@
 # Setup
 #
 
-cmake_minimum_required(VERSION 2.8.8)
+cmake_minimum_required(VERSION 2.8.7)
 # Use LINK_INTERFACE_LIBRARIES instead of INTERFACE_LINK_LIBRARIES
 if(POLICY CMP0022)
   cmake_policy(SET CMP0022 OLD)
