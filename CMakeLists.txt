@@ -279,7 +279,7 @@ else()
 	set(DJPEG_BMP_SOURCES wrbmp.c wrtarga.c)
 endif()
 
-if(WIN32 or CYGWIN)
+if(WIN32 OR CYGWIN)
    set(COMPILE_FLAGS "${COMPILE_FLAGS} -DUSE_SETMODE")
 endif()
 
