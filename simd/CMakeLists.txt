@@ -1,4 +1,4 @@
-3if(NOT DEFINED NASM)
+if(NOT DEFINED NASM)
   set(NASM nasm CACHE PATH "Path to NASM/YASM executable")
 endif()
 
