@@ -43,7 +43,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 message(STATUS "VERSION = ${VERSION}, BUILD = ${BUILD}")
-message("CMAKE_SIZEOF_VOID_P = ${CMAKE_SIZEOF_VOID_P}")
+message(STATUS "CMAKE_SIZEOF_VOID_P = ${CMAKE_SIZEOF_VOID_P}")
 
 option(WITH_SIMD "Include SIMD extensions" TRUE)
 option(WITH_ARITH_ENC "Include arithmetic encoding support" TRUE)
