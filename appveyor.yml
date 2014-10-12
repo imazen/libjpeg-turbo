@@ -37,7 +37,7 @@ install:
         else {
           $env:vcvar_arg = 'x86';
           $env:vc_cm_arg = 'Visual Studio 12';
-          $env:cmake_extra = '';
+          $env:cmake_extra = '-D64BIT=0';
         }
   
   
