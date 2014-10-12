@@ -264,6 +264,7 @@ if(WITH_TURBOJPEG)
   target_link_libraries(tjbench turbojpeg jpeg_static)
   if(UNIX)
     target_link_libraries(tjbench m)
+  endif()
   set_property(TARGET tjbench PROPERTY COMPILE_FLAGS
     "-DBMP_SUPPORTED -DPPM_SUPPORTED")
 
