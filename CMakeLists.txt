@@ -272,7 +272,7 @@ if(WITH_TURBOJPEG)
     wrppm.c)
   target_link_libraries(tjbench_static turbojpeg_static jpeg_static)
   if(UNIX)
-    target_link_libraries(tjbench m)
+    target_link_libraries(tjbench_static m)
   endif()
   set_property(TARGET tjbench_static PROPERTY COMPILE_FLAGS
     "-DBMP_SUPPORTED -DPPM_SUPPORTED")
