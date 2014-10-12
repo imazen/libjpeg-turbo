@@ -262,6 +262,8 @@ if(WITH_TURBOJPEG)
   add_executable(tjbench tjbench.c bmp.c tjutil.c rdbmp.c rdppm.c wrbmp.c
     wrppm.c)
   target_link_libraries(tjbench turbojpeg jpeg_static)
+  if(UNIX)
+    target_link_libraries(tjbench m)
   set_property(TARGET tjbench PROPERTY COMPILE_FLAGS
     "-DBMP_SUPPORTED -DPPM_SUPPORTED")
 
