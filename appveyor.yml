@@ -32,10 +32,12 @@ install:
   - ps: if($env:build_platform -eq 'x64') {
           $env:vcvar_arg = 'x86_amd64';
           $env:vc_cm_arg = 'Visual Studio 12 Win64';
+          $env:cmake_extra = '-D64BIT=1';
         }
         else {
           $env:vcvar_arg = 'x86';
           $env:vc_cm_arg = 'Visual Studio 12';
+          $env:cmake_extra = '';
         }
   
   
@@ -69,7 +71,7 @@ build_script:
   
   - SET zip=libjpeg-msvc12-%build_platform%.zip
   - SET zip2=turbojpeg-msvc12-%build_platform%.zip
-  - SET cmake_cmd=cmake -G "%vc_cm_arg%"
+  - SET cmake_cmd=cmake -G "%vc_cm_arg%" %cmake_extra%
   - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_vcargs%
   
   - if [%build_compiler%]==[msvc] (
@@ -92,7 +94,7 @@ build_script:
   
   - SET zip=libjpeg-mingw-%build_platform%.zip
   - SET zip2=turbojpeg-mingw-%build_platform%.zip
-  - SET cmake_cmd=cmake -G "MinGW Makefiles"
+  - SET cmake_cmd=cmake -G "MinGW Makefiles" %cmake_extra%
   - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_gcargs%
   
   - if [%build_compiler%]==[mingw] (

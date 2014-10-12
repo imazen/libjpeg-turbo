@@ -54,6 +54,7 @@ option(WITH_MEM_SRCDST "Include in-memory source/destination manager functions w
 option(WITH_TURBOJPEG "Include the TurboJPEG wrapper library and associated test programs" TRUE)
 option(WITH_JAVA "Build Java wrapper for the TurboJPEG library" FALSE)
 option(WITH_12BIT "Encode/decode JPEG images with 12-bit samples (implies WITH_SIMD=0 WITH_TURBOJPEG=0 WITH_ARITH_ENC=0 WITH_ARITH_DEC=0)" FALSE)
+option(64BIT "Compile for x64" TRUE)
 
 if(WITH_12BIT)
   set(WITH_SIMD FALSE)
@@ -131,14 +132,18 @@ if(MSVC)
   add_definitions(-W3 -wd4996)
 endif()
 
-# Detect whether compiler is 64-bit
-if(MSVC AND CMAKE_CL_64)
+if(64BIT)
   set(SIMD_X86_64 1)
-  set(64BIT 1)
-elseif(CMAKE_SIZEOF_VOID_P MATCHES 8)
-  set(SIMD_X86_64 1)
-  set(64BIT 1)
 endif()
+
+# Detect whether compiler is 64-bit
+#if(MSVC AND CMAKE_CL_64)
+#  set(SIMD_X86_64 1)
+#  set(64BIT 1)
+#elseif(CMAKE_SIZEOF_VOID_P MATCHES 8)
+#  set(SIMD_X86_64 1)
+#  set(64BIT 1)
+#endif()
 
 if(64BIT)
   message(STATUS "64-bit build")
