@@ -54,7 +54,7 @@ option(WITH_MEM_SRCDST "Include in-memory source/destination manager functions w
 option(WITH_TURBOJPEG "Include the TurboJPEG wrapper library and associated test programs" TRUE)
 option(WITH_JAVA "Build Java wrapper for the TurboJPEG library" FALSE)
 option(WITH_12BIT "Encode/decode JPEG images with 12-bit samples (implies WITH_SIMD=0 WITH_TURBOJPEG=0 WITH_ARITH_ENC=0 WITH_ARITH_DEC=0)" FALSE)
-option(64BIT "Compile for x64" TRUE)
+option(64BIT "Compile for x64" FALSE)
 
 if(WITH_12BIT)
   set(WITH_SIMD FALSE)
