@@ -119,6 +119,12 @@ test_script:
   - ps: Push-Ctest-Results '.'
   - ps: Push-AppveyorArtifact Testing\Temporary\LastTest.log
   - exit %fail%
+  
+  - if [%build_compiler%]==[msvc] (
+      cd release &&
+      curl -L -o test.jpg http://upload.wikimedia.org/wikipedia/commons/0/02/80486dx2-large.jpg &&
+      tjbench test.jpg 95 -rgb -qq &&
+      cd ..)
 
 on_success:
   - ps: Push-AppveyorArtifact "$nupkg_b*.nupkg"
