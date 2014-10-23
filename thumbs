@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# THe Ultimate Make Bash Script
+# Used to wrap build scripts for easy dep
+# handling and multiplatform support
+
+
+# Basic usage on *nix:
+# export tbs_arch=x86
+# ./thumbs make
+
+# On Win (msvc):
+# C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall x86_amd64
+# C:\path\to\bash -c "export tbs_tools=msvc12; ./thumbs make"
+
+# On Win (mingw32):
+# SET path=C:\mingw32\bin;%path%
+# C:\path\to\bash -c "export tbs_tools=mingw; export tbs_arch=x86; ./thumbs make"
+
+
+# Global settings are stored in env vars
+# Should be inherited
+
+[ $tbs_arch ]           || export tbs_arch=x64
+[ $tbs_tools ]          || export tbs_tools=gnu
+[ $tbs_static_runtime ] || export tbs_static_runtime=0
+
+# -----------
+
+if [ $# -lt 1 ]
+then
+  echo ""
+  echo " Usage : ./thumbs [command]"
+  echo ""
+  echo " Commands:"
+  echo "   make      - builds everything"
+  echo "   check     - runs tests"
+  echo "   clean     - removes build files"
+  echo "   list      - echo paths to any interesting files"
+  echo "               space separated; relative"
+  echo "   list_bin  - echo binary paths"
+  echo "   list_inc  - echo lib include files"
+  echo "   list_slib - echo static lib path"
+  echo "   list_dlib - echo dynamic lib path"
+  echo ""
+  exit
+fi
+
+# Local settings
+
+l_inc="./jpeglib.h ./jconfig.h ./jerror.h ./jmorecfg.h ./transupp.h"
+l_slib=
+l_dlib=
+l_bin=
+list=
+
+make=
+cm_tools=
+cm_args=()
+
+# -----------
+
+case "$tbs_tools" in
+msvc12)
+  cm_tools="Visual Studio 12"
+  make="msbuild.exe libjpeg-turbo.sln //p:Configuration=Release //v:m"
+  l_slib="./build/release/jpeg_static.lib"
+  l_dlib="./build/sharedlib/release/jpeg.lib"
+  l_bin="./build/sharedlib/release/jpeg62.dll"
+  list="$l_bin $l_slib $l_dlib $l_inc" ;;
+#gnu)
+#  cm_tools="Unix Makefiles"
+#  cm_args+=(-fPIC)
+#  make=make
+#  l_slib="./build/libz.a"
+#  l_dlib="./build/libz.so.1.2.7.3"
+#  l_bin="$l_dlib"
+#  list="$l_slib $l_dlib $l_inc" ;;
+#mingw)
+#  cm_tools="MinGW Makefiles"
+#  make=mingw32-make
+#  l_slib="./build/libz.a"
+#  l_dlib="./build/libz.dll.a"
+#  l_bin="./build/libz.dll"
+#  list="$l_bin $l_slib $l_dlib $l_inc" ;;
+esac
+
+# -----------
+
+case "$tbs_arch" in
+x64)
+  [ $tbs_tools = msvc12 ] && cm_tools="$cm_tools Win64"
+  [ $tbs_tools = gnu -o $tbs_tools = mingw ] && cm_args+=(-DCMAKE_C_FLAGS=-m64)
+  cm_args+=(-D64BIT=1) ;;
+x86)
+  [ $tbs_tools = gnu -o $tbs_tools = mingw ] && cm_args+=(-DCMAKE_C_FLAGS=-m32) ;;
+esac
+
+# -----------
+
+if [ $tbs_static_runtime -gt 0 ]
+then
+  [ $tbs_tools = msvc12 ] && cm_args+=(-DCMAKE_C_FLAGS_RELEASE=/MT)
+  [ $tbs_tools = gnu -o $tbs_tools = mingw ] && cm_args+=(-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc)
+fi
+
+# -----------
+
+case "$1" in
+make)
+  mkdir build
+  cd build
+  cmake -G "$cm_tools" "${cm_args[@]}" .. || exit 1
+  $make || exit 1
+  cd .. ;;
+  
+check)
+  cd build
+  ctest . || exit 1
+  cd .. ;;
+  
+clean)
+  rm -rf build ;;
+
+list) echo $list ;;
+list_bin) echo $l_bin ;;
+list_inc) echo $l_inc ;;
+list_slib) echo $l_slib ;;
+list_dlib) echo $l_dlib ;;
+esac
