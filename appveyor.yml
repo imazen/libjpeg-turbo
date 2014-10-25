@@ -4,40 +4,30 @@ shallow_clone: true
 
 
 environment:
-  # settings
-  static_runtime: 1
-  
-  static_gcargs: -DCMAKE_SHARED_LINKER_FLAGS=-static
-  static_vcargs:
-  #static_vcargs: -DCMAKE_C_FLAGS_RELEASE=/MT
-  # ^ don't.
-  
-  
   matrix:
-    - build_platform: "x86"
-      build_compiler: "msvc"
+    - tbs_arch: "x86"
+      tbs_tools: "msvc12"
+      tbs_static_runtime: 0
     
-    - build_platform: "x64"
-      build_compiler: "msvc"
+    - tbs_arch: "x64"
+      tbs_tools: "msvc12"
+      tbs_static_runtime: 0
     
-    - build_platform: "x86"
-      build_compiler: "mingw"
+    - tbs_arch: "x86"
+      tbs_tools: "mingw"
+      tbs_static_runtime: 1
     
-    - build_platform: "x64"
-      build_compiler: "mingw"
-
+    - tbs_arch: "x64"
+      tbs_tools: "mingw"
+      tbs_static_runtime: 1
 
 
 install:
   - ps: if($env:build_platform -eq 'x64') {
           $env:vcvar_arg = 'x86_amd64';
-          $env:vc_cm_arg = 'Visual Studio 12 Win64';
-          $env:cmake_extra = '-D64BIT=1';
         }
         else {
           $env:vcvar_arg = 'x86';
-          $env:vc_cm_arg = 'Visual Studio 12';
-          $env:cmake_extra = '';
         }
   
   
@@ -56,75 +46,35 @@ install:
   - ps: if($env:build_compiler -eq 'mingw' -and $env:build_platform -eq 'x64') {
       invoke 'curl' '-L -o mw64.7z "http://libgd.blob.core.windows.net/mingw/x86_64-4.9.1-release-posix-seh-rt_v3-rev1.7z"';
       invoke '7z' 'x -oC:\ mw64.7z'; }
-  
-  # sh is breaking mingw builds; remove
-  - for %%i in (sh.exe) do @del "%%~$PATH:i"
-
-
 
 
 build_script:
-  
-  - ps: $nupkg_b = "libjpeg-$($env:build_compiler)-$($env:build_platform)-$($env:APPVEYOR_REPO_BRANCH)";
-  - ps: $nupkg_c = "libjpeg-$($env:build_compiler)-$($env:build_platform)-$($env:APPVEYOR_REPO_COMMIT)";
-  
-  # build msvc
-  
   - '"C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\vcvarsall" %vcvar_arg%'
+  - if [%tbs_tools%]==[mingw] if [%tbs_arch%]==[x86] SET PATH=C:\MinGW\bin;%PATH%
+  - if [%tbs_tools%]==[mingw] if [%tbs_arch%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
   
-  - SET zip=libjpeg-msvc12-%build_platform%.zip
-  - SET zip2=turbojpeg-msvc12-%build_platform%.zip
-  - SET cmake_cmd=cmake -G "%vc_cm_arg%" %cmake_extra%
-  - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_vcargs%
+  - SET zip=libjpeg-turbo-%tbs_tools%-%tbs_arch%.zip
+  - ps: $nupkg_b = "libjpeg-$($env:tbs_tools)-$($env:tbs_arch)-$($env:APPVEYOR_REPO_BRANCH)";
+  - ps: $nupkg_c = "libjpeg-$($env:tbs_tools)-$($env:tbs_arch)-$($env:APPVEYOR_REPO_COMMIT)";
   
-  - if [%build_compiler%]==[msvc] (
-      %cmake_cmd% &&
-      msbuild libjpeg-turbo.sln /p:Configuration=Release /v:m &&
-      7z a %zip% .\release\jpeg_static.lib .\sharedlib\release\jpeg.lib .\sharedlib\release\jpeg62.dll jpeglib.h jconfig.h jerror.h jmorecfg.h transupp.h &&
-      7z a %zip2% .\release\turbojpeg_static.lib .\release\turbojpeg.lib .\release\turbojpeg.dll &&
-      appveyor PushArtifact %zip% &&
-      appveyor PushArtifact %zip2% )
+  - thumbs make
+  - for /f "tokens=*" %%i in ('thumbs list') do set files=%%i
+  - 7z a %zip% %files%
+  - appveyor PushArtifact %zip%
   
   - ps: if(Test-Path $env:zip) {
           zip2nuget $env:zip $nupkg_b;
           zip2nuget $env:zip $nupkg_c; }
-  
-  
-  # build mingw
-  
-  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x86] SET PATH=C:\MinGW\bin;%PATH%
-  - if [%build_compiler%]==[mingw] if [%build_platform%]==[x64] SET PATH=C:\mingw64\bin;%PATH%
-  
-  - SET zip=libjpeg-mingw-%build_platform%.zip
-  - SET zip2=turbojpeg-mingw-%build_platform%.zip
-  - SET cmake_cmd=cmake -G "MinGW Makefiles" %cmake_extra%
-  - if [%static_runtime%]==[1] SET cmake_cmd=%cmake_cmd% %static_gcargs%
-  
-  - if [%build_compiler%]==[mingw] (
-      %cmake_cmd% &&
-      mingw32-make &&
-      7z a %zip% libjpeg.a .\sharedlib\libjpeg.dll.a .\sharedlib\libjpeg-62.dll jpeglib.h jconfig.h jerror.h jmorecfg.h transupp.h &&
-      7z a %zip2% libturbojpeg.a libturbojpeg.dll.a libturbojpeg.dll &&
-      appveyor PushArtifact %zip% &&
-      appveyor PushArtifact %zip2% )
-  
-  - ps: if(Test-Path $env:zip) {
-          zip2nuget $env:zip $nupkg_b;
-          zip2nuget $env:zip $nupkg_c; }
+
 
 
 test_script:
   - SET fail=0
-  - ctest -C Release || SET fail=1 & ver > nul
-  - ps: Push-Ctest-Results '.'
-  - ps: Push-AppveyorArtifact Testing\Temporary\LastTest.log
+  - thumbs check || SET fail=1 & ver > nul
+  - ps: Push-Ctest-Results 'build'
+  - ps: Push-AppveyorArtifact build\Testing\Temporary\LastTest.log
   - exit %fail%
-  
-  - if [%build_compiler%]==[msvc] (
-      cd release &&
-      curl -L -o test.jpg http://upload.wikimedia.org/wikipedia/commons/0/02/80486dx2-large.jpg &&
-      tjbench test.jpg 95 -rgb -qq &&
-      cd ..)
+
 
 on_success:
   - ps: Push-AppveyorArtifact "$nupkg_b*.nupkg"
