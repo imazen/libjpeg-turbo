@@ -43,7 +43,7 @@ install:
   - ps: $env:path="C:\Program Files (x86)\nasm;$($env:path)"
   
   # get mingw-w64 (C:\mingw64)
-  - ps: if($env:build_compiler -eq 'mingw' -and $env:build_platform -eq 'x64') {
+  - ps: if($env:tbs_tools -eq 'mingw' -and $env:tbs_arch -eq 'x64') {
       invoke 'curl' '-L -o mw64.7z "http://libgd.blob.core.windows.net/mingw/x86_64-4.9.1-release-posix-seh-rt_v3-rev1.7z"';
       invoke '7z' 'x -oC:\ mw64.7z'; }
 
