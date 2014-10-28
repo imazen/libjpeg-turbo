@@ -24,4 +24,4 @@ for %%i in (tbs_conf tbs_arch tbs_tools tbs_static_runtime) do (
   )
 )
 
-bash -c "%exports%./thumbs %*"
+bash -c "%exports%./thumbs.sh %*"

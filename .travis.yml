@@ -17,5 +17,5 @@ before_install:
     fi
 
 script:
-  - ./thumbs make
-  - ./thumbs check
+  - ./thumbs.sh make
+  - ./thumbs.sh check

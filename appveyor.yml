@@ -43,9 +43,17 @@ install:
   - ps: $env:path="C:\Program Files (x86)\nasm;$($env:path)"
   
   # get mingw-w64 (C:\mingw64)
-  - ps: if($env:tbs_tools -eq 'mingw' -and $env:tbs_arch -eq 'x64') {
-      invoke 'curl' '-L -o mw64.7z "http://libgd.blob.core.windows.net/mingw/x86_64-4.9.1-release-posix-seh-rt_v3-rev1.7z"';
-      invoke '7z' 'x -oC:\ mw64.7z'; }
+  # copy of http://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win64/Personal%20Builds/mingw-builds/4.9.1/threads-posix/seh/x86_64-4.9.1-release-posix-seh-rt_v3-rev1.7z
+  - ps: if($env:tbs_tools -eq 'mingw' -and $env:tbs_arch -eq 'x64')
+        {
+          curl -outfile mw64.7z "http://libgd.blob.core.windows.net/mingw/x86_64-4.9.1-release-posix-seh-rt_v3-rev1.7z";
+          if((Get-FileHash mw64.7z -Algorithm SHA1).Hash -ne "91A35AE296C1A71802AB0C7228EE57F9AAC5D7C7")
+          {
+            echo "Invalid file hash";
+            exit 1;
+          };
+          7z x -oC:\ mw64.7z | out-null;
+        }
 
 
 build_script:

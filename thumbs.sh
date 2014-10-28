@@ -7,7 +7,7 @@
 
 # Basic usage on *nix:
 # export tbs_arch=x86
-# ./thumbs make
+# ./thumbs.sh make
 
 
 # On Win (msvc 2013):
@@ -35,7 +35,7 @@
 if [ $# -lt 1 ]
 then
   echo ""
-  echo " Usage : ./thumbs [command]"
+  echo " Usage : ./thumbs.sh [command]"
   echo ""
   echo " Commands:"
   echo "   make [target]   - builds everything"
