@@ -60,7 +60,7 @@ upper()
 
 # Local settings
 
-l_inc="./jpeglib.h ./build/jconfig.h ./jerror.h ./jmorecfg.h ./transupp.h"
+l_inc="./jpeglib.h ./build/jconfig.h ./jerror.h ./jmorecfg.h ./transupp.h ./jinclude.h"
 l_slib=
 l_dlib=
 l_bin=
