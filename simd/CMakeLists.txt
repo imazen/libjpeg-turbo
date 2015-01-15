@@ -12,15 +12,21 @@ if(WIN32)
       set(NAFLAGS -fwin32 -DWIN32)
     endif()
   endif()
-  set(NAFLAGS ${NAFLAGS} -I${CMAKE_SOURCE_DIR}/win/ -I${CMAKE_CURRENT_SOURCE_DIR}/)
+elseif(APPLE)
+  if(SIMD_X86_64)
+    set(NAFLAGS -DPIC -fmacho64 -DMACHO -D__x86_64__)
+  else()
+    set(NAFLAGS -DPIC -fmacho32 -DMACHO)
+  endif()
 else()
   if(SIMD_X86_64)
     set(NAFLAGS -DPIC -felf64 -DELF -D__x86_64__)
   else()
     set(NAFLAGS -DPIC -felf32 -DELF)
   endif()
-  set(NAFLAGS ${NAFLAGS} -I${CMAKE_SOURCE_DIR}/win/ -I${CMAKE_CURRENT_SOURCE_DIR}/)
 endif()
+
+set(NAFLAGS ${NAFLAGS} -I${CMAKE_SOURCE_DIR}/win/ -I${CMAKE_CURRENT_SOURCE_DIR}/)
 
 # This only works if building from the command line.  There is currently no way
 # to set a variable's value based on the build type when using the MSVC IDE.
